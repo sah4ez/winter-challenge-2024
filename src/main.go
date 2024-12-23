@@ -6,13 +6,16 @@ package main
 
 func main() {
 	game := NewGame()
+	step := 0
 	for {
 		state := game.State()
 
 		state.ScanStocks()
 		state.ScanReqActions()
 
-		state.Debug()
 		state.DoAction()
+		state.Debug()
+		DebugMsg("step: ", step)
+		step += 1
 	}
 }

@@ -15,13 +15,13 @@ func (g *Game) Scan() {
 }
 
 func (g *Game) State() *State {
-	if g.state == nil {
-		g.state = NewState(g.Width, g.Height)
-	} else {
-		g.state.Scan()
-	}
+	g.state = NewState(g.Width, g.Height)
+	// if g.state == nil {
+	// g.state = NewState(g.Width, g.Height)
+	// } else {
+	// g.state.Scan()
+	// }
 	g.state.ScanEnties()
-	DebugMsg("load enties")
 	return g.state
 }
 
