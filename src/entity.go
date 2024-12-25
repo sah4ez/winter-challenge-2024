@@ -12,6 +12,8 @@ type Entity struct {
 	OrganRootID   int
 
 	NextDistance float64
+	Score        float64
+	Protein      *Entity
 }
 
 func (e *Entity) Scan() {
@@ -26,6 +28,18 @@ func (e *Entity) GrowHarvester(direction string) string {
 	return fmt.Sprintf("%s %d %d %d %s %s", GrowCmd, e.OrganID, e.Pos.X, e.Pos.Y, HarvesterTypeEntity, direction)
 }
 
+func (e *Entity) GrowTentacle(direction string) string {
+	return fmt.Sprintf("%s %d %d %d %s %s", GrowCmd, e.OrganID, e.Pos.X, e.Pos.Y, TentacleTypeEntity, direction)
+}
+
+func (e *Entity) GrowSporer(direction string) string {
+	return fmt.Sprintf("%s %d %d %d %s %s", GrowCmd, e.OrganID, e.Pos.X, e.Pos.Y, SporerTypeEntity, direction)
+}
+
+func (e *Entity) Spore() string {
+	return fmt.Sprintf("%s %d %d %d", SporeCmd, e.OrganID, e.Protein.Pos.X, e.Protein.Pos.Y)
+}
+
 func (e *Entity) IsWall() bool {
 	return e.Type == WallTypeEntity
 }
@@ -34,12 +48,28 @@ func (e *Entity) IsRoot() bool {
 	return e.Type == RootTypeEntity
 }
 
+func (e *Entity) IsSporer() bool {
+	return e.Type == SporerTypeEntity
+}
+
 func (e *Entity) IsAProtein() bool {
 	return e.Type == AProteinTypeEntity
 }
 
+func (e *Entity) IsBProtein() bool {
+	return e.Type == BProteinTypeEntity
+}
+
+func (e *Entity) IsCProtein() bool {
+	return e.Type == CProteinTypeEntity
+}
+
+func (e *Entity) IsDProtein() bool {
+	return e.Type == DProteinTypeEntity
+}
+
 func (e *Entity) IsProtein() bool {
-	return e.IsAProtein()
+	return e.IsAProtein() || e.IsBProtein() || e.IsCProtein() || e.IsDProtein()
 }
 
 func (e *Entity) IsBasic() bool {

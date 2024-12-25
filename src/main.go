@@ -14,7 +14,7 @@ func main() {
 		state.ScanReqActions()
 
 		state.DoAction()
-		state.Debug()
+		// state.Debug()
 		DebugMsg("step: ", step)
 		step += 1
 	}
