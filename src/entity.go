@@ -48,6 +48,10 @@ func (e *Entity) IsRoot() bool {
 	return e.Type == RootTypeEntity
 }
 
+func (e *Entity) IsHarvester() bool {
+	return e.Type == HarvesterTypeEntity
+}
+
 func (e *Entity) IsSporer() bool {
 	return e.Type == SporerTypeEntity
 }
@@ -93,7 +97,7 @@ func (e *Entity) IsNeutral() bool {
 }
 
 func (e *Entity) ToLog() string {
-	return fmt.Sprintf("(%d:%d)%s:%d", e.Pos.X, e.Pos.Y, e.Type, e.Owner)
+	return fmt.Sprintf("(%d:%d)%d:%.2f", e.Pos.X, e.Pos.Y, e.Owner, e.NextDistance)
 }
 
 func (e *Entity) ID() string {
