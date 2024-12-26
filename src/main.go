@@ -6,7 +6,7 @@ package main
 
 func main() {
 	game := NewGame()
-	step := 0
+	// step := 0
 	for {
 		state := game.State()
 
@@ -15,7 +15,7 @@ func main() {
 
 		state.DoAction()
 		// state.Debug()
-		DebugMsg("step: ", step)
-		step += 1
+		// DebugMsg("step: ", step)
+		// step += 1
 	}
 }

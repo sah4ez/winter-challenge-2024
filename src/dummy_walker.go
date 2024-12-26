@@ -4,24 +4,23 @@ import "math"
 
 func (s *State) Dummy(e *Entity) bool {
 
-	freePos := s.GetFreePos()
-	if len(freePos) == 0 {
+	if len(s.freePos) == 0 {
 		return false
 	}
 
 	for _, protein := range s.proteins {
-		for i, free := range freePos {
+		for i, free := range s.freePos {
 			newDistance := free.Pos.Distance(protein.Pos)
 			if math.Abs(newDistance) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && newDistance >= 0) {
 				free.NextDistance = math.Abs(newDistance)
 				free.Protein = protein
-				freePos[i] = free
+				s.freePos[i] = free
 			}
 		}
 	}
 
-	min := freePos[0]
-	for _, free := range freePos {
+	min := s.freePos[0]
+	for _, free := range s.freePos {
 		s.matrix[free.Pos.Y][free.Pos.X] = &Entity{
 			Type:         FreeTypeEntity,
 			Pos:          free.Pos,
@@ -38,7 +37,10 @@ func (s *State) Dummy(e *Entity) bool {
 		}
 	}
 
-	s.nextEntity = append(s.nextEntity, min)
+	if _, ok := s.nextHash[min.ID()]; !ok {
+		s.nextHash[min.ID()] = min
+		s.nextEntity = append(s.nextEntity, min)
+	}
 
 	return false
 }

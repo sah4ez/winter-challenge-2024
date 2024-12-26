@@ -28,24 +28,23 @@ const DProteinTypeEntity = "D"
 
 func (s *State) Dummy(e *Entity) bool {
 
-	freePos := s.GetFreePos()
-	if len(freePos) == 0 {
+	if len(s.freePos) == 0 {
 		return false
 	}
 
 	for _, protein := range s.proteins {
-		for i, free := range freePos {
+		for i, free := range s.freePos {
 			newDistance := free.Pos.Distance(protein.Pos)
 			if math.Abs(newDistance) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && newDistance >= 0) {
 				free.NextDistance = math.Abs(newDistance)
 				free.Protein = protein
-				freePos[i] = free
+				s.freePos[i] = free
 			}
 		}
 	}
 
-	min := freePos[0]
-	for _, free := range freePos {
+	min := s.freePos[0]
+	for _, free := range s.freePos {
 		s.matrix[free.Pos.Y][free.Pos.X] = &Entity{
 			Type:         FreeTypeEntity,
 			Pos:          free.Pos,
@@ -62,7 +61,10 @@ func (s *State) Dummy(e *Entity) bool {
 		}
 	}
 
-	s.nextEntity = append(s.nextEntity, min)
+	if _, ok := s.nextHash[min.ID()]; !ok {
+		s.nextHash[min.ID()] = min
+		s.nextEntity = append(s.nextEntity, min)
+	}
 
 	return false
 }
@@ -145,6 +147,26 @@ func (e *Entity) IsEmpty() bool {
 	return e.Type == ""
 }
 
+func (e *Entity) IsMy() bool {
+	return e.Owner == 1
+}
+
+func (e *Entity) IsOpponent() bool {
+	return e.Owner == 0
+}
+
+func (e *Entity) IsNeutral() bool {
+	return e.Owner == -1
+}
+
+func (e *Entity) ToLog() string {
+	return fmt.Sprintf("(%d:%d)%s:%d", e.Pos.X, e.Pos.Y, e.Type, e.Owner)
+}
+
+func (e *Entity) ID() string {
+	return fmt.Sprintf("(%d:%d)", e.Pos.X, e.Pos.Y)
+}
+
 func NewEntity() *Entity {
 
 	e := &Entity{}
@@ -187,7 +209,7 @@ func NewGame() *Game {
 
 func main() {
 	game := NewGame()
-	step := 0
+	// step := 0
 	for {
 		state := game.State()
 
@@ -196,8 +218,8 @@ func main() {
 
 		state.DoAction()
 		// state.Debug()
-		DebugMsg("step: ", step)
-		step += 1
+		// DebugMsg("step: ", step)
+		// step += 1
 	}
 }
 
@@ -300,6 +322,8 @@ type State struct {
 	proteins    []*Entity
 
 	nextEntity []*Entity
+	nextHash   map[string]*Entity
+	freePos    []*Entity
 	w          int
 	h          int
 }
@@ -315,15 +339,20 @@ func (s *State) ScanEnties() {
 	s.oppEntities = make([]*Entity, 0)
 	s.proteins = make([]*Entity, 0)
 	s.nextEntity = make([]*Entity, 0)
+	s.nextHash = make(map[string]*Entity, 0)
+	s.matrix = make([][]*Entity, 0)
+	for i := 0; i < s.w; i++ {
+		s.matrix = append(s.matrix, make([]*Entity, s.h))
+	}
 
 	for i := 0; i < s.EntityCount; i++ {
 		e := NewEntity()
-		if e.Owner == 1 {
+		if e.IsMy() {
 			s.myEntities = append(s.myEntities, e)
 			if e.IsSporer() {
 				s.mySporer = append(s.mySporer, e)
 			}
-		} else if e.Owner == 0 {
+		} else if e.IsOpponent() {
 			s.oppEntities = append(s.oppEntities, e)
 		} else {
 			s.entities = append(s.entities, e)
@@ -347,12 +376,14 @@ func (s *State) ScanReqActions() {
 
 func (s *State) DoAction() {
 	for i := 0; i < s.RequiredActionsCount; i++ {
+		_ = s.GetFreePos()
 		s.walk(0, 0, s.Dummy)
 	}
 	organs := s.AvailableOrang()
 	DebugMsg("organs: ", organs, len(s.nextEntity))
 
 	for _, e := range s.nextEntity {
+		DebugMsg(">", e.ToLog())
 		// if len(s.mySporer) > 0 && organs.HasRoot() {
 		// dir := s.mySporer[0].OrganDir
 		// if dir == DirE {
@@ -435,7 +466,7 @@ func (s *State) getByPos(p Position) (e *Entity) {
 }
 
 func (s *State) GetFreePos() []*Entity {
-	freePos := make([]*Entity, 0)
+	s.freePos = make([]*Entity, 0)
 	do := func(e *Entity, useProtein bool) {
 		if e == nil {
 			return
@@ -454,7 +485,7 @@ func (s *State) GetFreePos() []*Entity {
 			if newPos == nil || (useProtein && newPos.IsProtein()) {
 				newPos = &Entity{Pos: pos}
 				newPos.OrganID = e.OrganID
-				freePos = append(freePos, newPos)
+				s.freePos = append(s.freePos, newPos)
 			}
 		}
 	}
@@ -462,13 +493,14 @@ func (s *State) GetFreePos() []*Entity {
 	for _, e := range s.myEntities {
 		do(e, false)
 	}
-	// if len(freePos) == 0 {
-	// for _, e := range s.myEntities {
-	// freePos = append(freePos, e)
-	// }
-	// }
+	if len(s.freePos) == 0 {
+		for _, e := range s.myEntities {
+			do(e, true)
+		}
+		DebugMsg(">> len free", len(s.freePos))
+	}
 
-	return freePos
+	return s.freePos
 }
 
 func (s *State) GetHarvesterDir(e *Entity) string {
@@ -539,6 +571,7 @@ func NewState(h, w int) *State {
 		oppEntities: make([]*Entity, 0),
 		proteins:    make([]*Entity, 0),
 		nextEntity:  make([]*Entity, 0),
+		nextHash:    make(map[string]*Entity, 0),
 		matrix:      make([][]*Entity, 0),
 		w:           w,
 		h:           h,

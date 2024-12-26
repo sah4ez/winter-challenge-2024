@@ -80,6 +80,26 @@ func (e *Entity) IsEmpty() bool {
 	return e.Type == ""
 }
 
+func (e *Entity) IsMy() bool {
+	return e.Owner == 1
+}
+
+func (e *Entity) IsOpponent() bool {
+	return e.Owner == 0
+}
+
+func (e *Entity) IsNeutral() bool {
+	return e.Owner == -1
+}
+
+func (e *Entity) ToLog() string {
+	return fmt.Sprintf("(%d:%d)%s:%d", e.Pos.X, e.Pos.Y, e.Type, e.Owner)
+}
+
+func (e *Entity) ID() string {
+	return fmt.Sprintf("(%d:%d)", e.Pos.X, e.Pos.Y)
+}
+
 func NewEntity() *Entity {
 
 	e := &Entity{}
