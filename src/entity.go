@@ -14,6 +14,7 @@ type Entity struct {
 	NextDistance float64
 	Score        float64
 	Protein      *Entity
+	CanAttack    bool
 }
 
 func (e *Entity) Scan() {
@@ -56,6 +57,10 @@ func (e *Entity) IsSporer() bool {
 	return e.Type == SporerTypeEntity
 }
 
+func (e *Entity) IsTentacle() bool {
+	return e.Type == TentacleTypeEntity
+}
+
 func (e *Entity) IsAProtein() bool {
 	return e.Type == AProteinTypeEntity
 }
@@ -80,28 +85,48 @@ func (e *Entity) IsBasic() bool {
 	return e.Type == BasicTypeEntity
 }
 
+func (e *Entity) IsFree() bool {
+	return e.Type == FreeTypeEntity
+}
+
 func (e *Entity) IsEmpty() bool {
 	return e.Type == ""
 }
 
 func (e *Entity) IsMy() bool {
-	return e.Owner == 1
+	return e.Owner == 1 && !e.IsEmpty()
 }
 
 func (e *Entity) IsOpponent() bool {
-	return e.Owner == 0
+	return e.Owner == 0 && !e.IsEmpty()
 }
 
 func (e *Entity) IsNeutral() bool {
-	return e.Owner == -1
+	return e.Owner == -1 && !e.IsEmpty()
 }
 
 func (e *Entity) ToLog() string {
-	return fmt.Sprintf("(%d:%d)%d:%.2f", e.Pos.X, e.Pos.Y, e.Owner, e.NextDistance)
+	return fmt.Sprintf("(%d:%d)%s:%d:%d:%.2f", e.Pos.X, e.Pos.Y, e.Type, e.OrganID, e.Owner, e.NextDistance)
 }
 
 func (e *Entity) ID() string {
 	return fmt.Sprintf("(%d:%d)", e.Pos.X, e.Pos.Y)
+}
+
+func (e *Entity) TentacleAttackPosition() Position {
+	if e.OrganDir == DirW {
+		return Position{X: e.Pos.X - 1, Y: e.Pos.Y}
+	}
+	if e.OrganDir == DirE {
+		return Position{X: e.Pos.X + 1, Y: e.Pos.Y}
+	}
+	if e.OrganDir == DirN {
+		return Position{X: e.Pos.X, Y: e.Pos.Y - 1}
+	}
+	if e.OrganDir == DirS {
+		return Position{X: e.Pos.X, Y: e.Pos.Y + 1}
+	}
+	return e.Pos
 }
 
 func NewEntity() *Entity {

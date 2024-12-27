@@ -21,10 +21,11 @@ type State struct {
 	entities    []*Entity
 	proteins    []*Entity
 
-	nextEntity []*Entity
-	nextHash   map[string]*Entity
-	freePos    []*Entity
-	eatProtein map[string]*Entity
+	nextEntity      []*Entity
+	nextHash        map[string]*Entity
+	freePos         []*Entity
+	eatProtein      map[string]*Entity
+	localityOppoent map[string]*Entity
 
 	w int
 	h int
@@ -44,6 +45,7 @@ func (s *State) ScanEnties() {
 	s.nextEntity = make([]*Entity, 0)
 	s.nextHash = make(map[string]*Entity, 0)
 	s.eatProtein = make(map[string]*Entity, 0)
+	s.localityOppoent = make(map[string]*Entity, 0)
 	s.matrix = make([][]*Entity, 0)
 	for i := 0; i < s.w; i++ {
 		s.matrix = append(s.matrix, make([]*Entity, s.h))
@@ -91,7 +93,12 @@ func (s *State) DoAction() {
 	}
 	organs := s.AvailableOrang()
 	DebugMsg("organs: ", organs, len(s.nextEntity))
-	DebugMsg("proteins: ", s.eatProtein)
+	DebugMsg("proteins: ", s.MyStock)
+	if len(s.nextEntity) == 0 {
+		for i := 0; i < s.RequiredActionsCount; i++ {
+			fmt.Println("WAIT") // Write action to stdout
+		}
+	}
 
 	for _, e := range s.nextEntity[:s.RequiredActionsCount] {
 		DebugMsg(">", e.ToLog())
@@ -120,7 +127,13 @@ func (s *State) DoAction() {
 		// continue
 		// }
 		// }
-		if e.NextDistance <= 1 && organs.HasHarvester() {
+		if e.CanAttack {
+			if organs.HasTentacle() {
+				fmt.Println(e.GrowTentacle(s.GetTentacleDir(e)))
+				continue
+			}
+		}
+		if s.HasProtein(e) && organs.HasHarvester() {
 			if dir := s.GetHarvesterDir(e); dir != "" {
 				fmt.Println(e.GrowHarvester(dir))
 				continue
@@ -132,19 +145,15 @@ func (s *State) DoAction() {
 		// continue
 		// }
 		// }
-		if s.HasNeigbourOpponent(e) {
-			if organs.HasTentacle() {
-				fmt.Println(e.GrowTentacle(s.GetTentacleDir(e)))
-				continue
-			}
-		}
 		if organs.HasBasic() {
 			fmt.Println(e.GrowBasic())
 			continue
 		}
 		if organs.HasHarvester() {
-			fmt.Println(e.GrowHarvester(e.OrganDir))
-			continue
+			if dir := s.GetHarvesterDir(e); dir != "" {
+				fmt.Println(e.GrowHarvester(dir))
+				continue
+			}
 		}
 		if organs.HasSporer() {
 			fmt.Println(e.GrowSporer(e.OrganDir))
@@ -173,9 +182,9 @@ func (s *State) Debug() {
 	for i, k := range s.matrix {
 		for j, n := range k {
 			if n != nil {
-				fmt.Fprintf(os.Stderr, " %c(%d;%d;%.2f) ", n.Type[0], i, j, n.NextDistance)
+				fmt.Fprintf(os.Stderr, " %c(%d;%d;%.2f) ", n.Type[0], j, i, n.NextDistance)
 			} else {
-				fmt.Fprintf(os.Stderr, " _(%d;%d) ", i, j)
+				fmt.Fprintf(os.Stderr, " _(%d;%d) ", j, i)
 			}
 		}
 		fmt.Fprint(os.Stderr, "\n")
@@ -210,6 +219,30 @@ func (s *State) GetFreePos() []*Entity {
 				continue
 			}
 			newPos := s.getByPos(pos)
+
+			underAttack := false
+			{
+				newPos := &Entity{Pos: pos, Type: AttackTypeEntity}
+				newDirs := newPos.Pos.GetLocality()
+				for _, nd := range newDirs {
+					if nd.X < 0 || nd.Y < 0 || nd.Y >= s.w || nd.X >= s.h {
+						continue
+					}
+					e := s.getByPos(nd)
+					if e != nil && e.IsOpponent() && e.IsTentacle() {
+						posAttack := e.TentacleAttackPosition()
+						if posAttack.Equal(newPos.Pos) {
+							DebugMsg("attack ->", newPos.ToLog())
+							underAttack = true
+						}
+					}
+				}
+			}
+
+			if underAttack {
+				continue
+			}
+
 			if newPos == nil || (useProtein && newPos.IsProtein()) {
 				newPos = &Entity{Pos: pos}
 				newPos.OrganID = e.OrganID
@@ -237,19 +270,27 @@ func (s *State) GetHarvesterDir(e *Entity) string {
 	}
 	up := s.getByPos(e.Pos.Up())
 	if up != nil && up.IsProtein() {
-		return DirN
+		if _, ok := s.eatProtein[up.ID()]; !ok {
+			return DirN
+		}
 	}
 	down := s.getByPos(e.Pos.Down())
 	if down != nil && down.IsProtein() {
-		return DirS
+		if _, ok := s.eatProtein[down.ID()]; !ok {
+			return DirS
+		}
 	}
 	left := s.getByPos(e.Pos.Left())
 	if left != nil && left.IsProtein() {
-		return DirW
+		if _, ok := s.eatProtein[left.ID()]; !ok {
+			return DirW
+		}
 	}
 	right := s.getByPos(e.Pos.Right())
 	if right != nil && right.IsProtein() {
-		return DirE
+		if _, ok := s.eatProtein[right.ID()]; !ok {
+			return DirE
+		}
 	}
 
 	return ""
@@ -283,12 +324,7 @@ func (s *State) HasNeigbourOpponent(e *Entity) bool {
 		return false
 	}
 
-	dirs := []Position{
-		e.Pos.Up(),
-		e.Pos.Down(),
-		e.Pos.Left(),
-		e.Pos.Right(),
-	}
+	dirs := e.Pos.GetLocality()
 	for _, pos := range dirs {
 		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
 			continue
@@ -299,6 +335,42 @@ func (s *State) HasNeigbourOpponent(e *Entity) bool {
 		}
 	}
 	return false
+}
+
+func (s *State) HasProtein(e *Entity) bool {
+	if e == nil {
+		return false
+	}
+
+	dirs := e.Pos.GetLocality()
+	for _, pos := range dirs {
+		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+			continue
+		}
+		e := s.getByPos(pos)
+		if e != nil && e.IsProtein() {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *State) AroundOpponet(e *Entity) bool {
+	if e == nil {
+		return false
+	}
+
+	dirs := e.Pos.GetLocality()
+	for _, pos := range dirs {
+		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+			continue
+		}
+		e := s.getByPos(pos)
+		if e != nil && !e.IsWall() || !e.IsOpponent() {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *State) GetTentacleDir(e *Entity) string {
@@ -319,6 +391,38 @@ func (s *State) GetTentacleDir(e *Entity) string {
 	}
 	right := s.getByPos(e.Pos.Right())
 	if right != nil && right.IsOpponent() {
+		return DirE
+	}
+	up = s.getByPos(e.Pos.Up())
+	if up == nil {
+		return DirN
+	}
+	down = s.getByPos(e.Pos.Down())
+	if down == nil {
+		return DirS
+	}
+	left = s.getByPos(e.Pos.Left())
+	if left == nil {
+		return DirW
+	}
+	right = s.getByPos(e.Pos.Right())
+	if right == nil {
+		return DirE
+	}
+	up = s.getByPos(e.Pos.Up())
+	if up != nil && up.IsFree() {
+		return DirN
+	}
+	down = s.getByPos(e.Pos.Down())
+	if down != nil && down.IsFree() {
+		return DirS
+	}
+	left = s.getByPos(e.Pos.Left())
+	if left != nil && left.IsFree() {
+		return DirW
+	}
+	right = s.getByPos(e.Pos.Right())
+	if right != nil && right.IsFree() {
 		return DirE
 	}
 
@@ -363,18 +467,19 @@ func (s *State) GetSporerDir(from, to *Entity) string {
 
 func NewState(h, w int) *State {
 	s := &State{
-		entities:    make([]*Entity, 0),
-		myEntities:  make([]*Entity, 0),
-		mySporer:    make([]*Entity, 0),
-		myRoot:      make([]*Entity, 0),
-		oppEntities: make([]*Entity, 0),
-		proteins:    make([]*Entity, 0),
-		nextEntity:  make([]*Entity, 0),
-		nextHash:    make(map[string]*Entity, 0),
-		matrix:      make([][]*Entity, 0),
-		eatProtein:  make(map[string]*Entity, 0),
-		w:           w,
-		h:           h,
+		entities:        make([]*Entity, 0),
+		myEntities:      make([]*Entity, 0),
+		mySporer:        make([]*Entity, 0),
+		myRoot:          make([]*Entity, 0),
+		oppEntities:     make([]*Entity, 0),
+		proteins:        make([]*Entity, 0),
+		nextEntity:      make([]*Entity, 0),
+		nextHash:        make(map[string]*Entity, 0),
+		matrix:          make([][]*Entity, 0),
+		eatProtein:      make(map[string]*Entity, 0),
+		localityOppoent: make(map[string]*Entity, 0),
+		w:               w,
+		h:               h,
 	}
 
 	for i := 0; i < w; i++ {
