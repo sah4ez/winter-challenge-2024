@@ -8,6 +8,23 @@ func (s *State) Dummy(e *Entity) bool {
 		return false
 	}
 
+	for _, attackOverProtein := range s.nearProteins {
+		if s.MyStock.GetPercent(attackOverProtein.Type) < 0.4 {
+			continue
+		}
+
+		attackOverProtein.NextDistance = 0.0
+		attackOverProtein.CanAttack = true
+		if _, ok := s.nextHash[attackOverProtein.ID()]; !ok {
+			s.nextHash[attackOverProtein.ID()] = attackOverProtein
+			s.nextEntity = append(s.nextEntity, attackOverProtein)
+			DebugMsg("protein attack -> ", attackOverProtein.ToLog())
+		}
+	}
+	if len(s.nextEntity) > 0 {
+		return false
+	}
+
 	for i, free := range s.freePos {
 		for _, protein := range s.proteins {
 			if _, ok := s.eatProtein[protein.ID()]; ok {
@@ -28,15 +45,6 @@ func (s *State) Dummy(e *Entity) bool {
 			}
 			e := s.getByPos(pos)
 			if e != nil && e.IsOpponent() {
-				// if e.IsTentacle() {
-				// posAttack := e.TentacleAttackPosition()
-				// if posAttack.Equal(free.Pos) {
-				// free.NextDistance = DoNotUseEntityDistance
-				// s.freePos[i] = free
-				// DebugMsg("attack ->", free.ToLog())
-				// continue
-				// }
-				// }
 				if _, ok := s.localityOppoent[free.ID()]; ok {
 					continue
 				}

@@ -34,6 +34,25 @@ func (s *State) Dummy(e *Entity) bool {
 		return false
 	}
 
+	for _, attackOverProtein := range s.nearProteins {
+		DebugMsg("protein -> ", attackOverProtein.ToLog())
+		if s.MyStock.GetPercent(attackOverProtein.Type) < 0.4 {
+			continue
+		}
+
+		attackOverProtein.NextDistance = 0.0
+		attackOverProtein.CanAttack = true
+		attackOverProtein.Type = AttackTypeEntity
+		DebugMsg("protein attack -> ", attackOverProtein.ToLog())
+		if _, ok := s.nextHash[attackOverProtein.ID()]; !ok {
+			s.nextHash[attackOverProtein.ID()] = attackOverProtein
+			s.nextEntity = append(s.nextEntity, attackOverProtein)
+		}
+	}
+	if len(s.nextEntity) > 0 {
+		return false
+	}
+
 	for i, free := range s.freePos {
 		for _, protein := range s.proteins {
 			if _, ok := s.eatProtein[protein.ID()]; ok {
@@ -54,15 +73,6 @@ func (s *State) Dummy(e *Entity) bool {
 			}
 			e := s.getByPos(pos)
 			if e != nil && e.IsOpponent() {
-				// if e.IsTentacle() {
-				// posAttack := e.TentacleAttackPosition()
-				// if posAttack.Equal(free.Pos) {
-				// free.NextDistance = DoNotUseEntityDistance
-				// s.freePos[i] = free
-				// DebugMsg("attack ->", free.ToLog())
-				// continue
-				// }
-				// }
 				if _, ok := s.localityOppoent[free.ID()]; ok {
 					continue
 				}
@@ -390,6 +400,15 @@ func (p Position) GetLocality() []Position {
 	}
 }
 
+func (p Position) GetRoseLocality() []Position {
+	return []Position{
+		p.Up(),
+		p.Down(),
+		p.Left(),
+		p.Right(),
+	}
+}
+
 func (from Position) Distance(to Position) float64 {
 	return math.Sqrt(math.Pow(float64(to.X-from.X), 2) + math.Pow(float64(to.Y-from.Y), 2))
 }
@@ -413,6 +432,7 @@ type State struct {
 	nextEntity      []*Entity
 	nextHash        map[string]*Entity
 	freePos         []*Entity
+	nearProteins    []*Entity
 	eatProtein      map[string]*Entity
 	localityOppoent map[string]*Entity
 
@@ -478,6 +498,7 @@ func (s *State) ScanReqActions() {
 func (s *State) DoAction() {
 	for i := 0; i < s.RequiredActionsCount; i++ {
 		_ = s.GetFreePos()
+		_ = s.GetNearProteins()
 		s.walk(0, 0, s.Dummy)
 	}
 	organs := s.AvailableOrang()
@@ -487,6 +508,7 @@ func (s *State) DoAction() {
 		for i := 0; i < s.RequiredActionsCount; i++ {
 			fmt.Println("WAIT") // Write action to stdout
 		}
+		return
 	}
 
 	for _, e := range s.nextEntity[:s.RequiredActionsCount] {
@@ -543,7 +565,6 @@ func (s *State) DoAction() {
 				fmt.Println(e.GrowHarvester(dir))
 				continue
 			}
-			continue
 		}
 		if organs.HasSporer() {
 			fmt.Println(e.GrowSporer(e.OrganDir))
@@ -590,6 +611,44 @@ func (s *State) getByPos(p Position) (e *Entity) {
 		return nil
 	}
 	return row[p.X]
+}
+
+func (s *State) GetNearProteins() []*Entity {
+	s.nearProteins = make([]*Entity, 0)
+	do := func(e *Entity) {
+		if e == nil {
+			return
+		}
+
+		nearMe := false
+		nearOpponent := false
+
+		dirs := e.Pos.GetRoseLocality()
+		for _, pos := range dirs {
+			if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+				continue
+			}
+			newPos := s.getByPos(pos)
+			if newPos == nil {
+				continue
+			}
+			if newPos.IsMy() {
+				nearMe = true
+			}
+			if newPos.IsOpponent() {
+				nearOpponent = true
+			}
+		}
+		if nearMe && nearOpponent {
+			s.nearProteins = append(s.nearProteins, e)
+		}
+	}
+
+	for _, e := range s.proteins {
+		do(e)
+	}
+
+	return s.nearProteins
 }
 
 func (s *State) GetFreePos() []*Entity {

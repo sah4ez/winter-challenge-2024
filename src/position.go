@@ -42,6 +42,15 @@ func (p Position) GetLocality() []Position {
 	}
 }
 
+func (p Position) GetRoseLocality() []Position {
+	return []Position{
+		p.Up(),
+		p.Down(),
+		p.Left(),
+		p.Right(),
+	}
+}
+
 func (from Position) Distance(to Position) float64 {
 	return math.Sqrt(math.Pow(float64(to.X-from.X), 2) + math.Pow(float64(to.Y-from.Y), 2))
 }

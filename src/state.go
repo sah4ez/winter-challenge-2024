@@ -24,6 +24,7 @@ type State struct {
 	nextEntity      []*Entity
 	nextHash        map[string]*Entity
 	freePos         []*Entity
+	nearProteins    []*Entity
 	eatProtein      map[string]*Entity
 	localityOppoent map[string]*Entity
 
@@ -89,6 +90,7 @@ func (s *State) ScanReqActions() {
 func (s *State) DoAction() {
 	for i := 0; i < s.RequiredActionsCount; i++ {
 		_ = s.GetFreePos()
+		_ = s.GetNearProteins()
 		s.walk(0, 0, s.Dummy)
 	}
 	organs := s.AvailableOrang()
@@ -98,6 +100,7 @@ func (s *State) DoAction() {
 		for i := 0; i < s.RequiredActionsCount; i++ {
 			fmt.Println("WAIT") // Write action to stdout
 		}
+		return
 	}
 
 	for _, e := range s.nextEntity[:s.RequiredActionsCount] {
@@ -200,6 +203,46 @@ func (s *State) getByPos(p Position) (e *Entity) {
 		return nil
 	}
 	return row[p.X]
+}
+
+func (s *State) GetNearProteins() []*Entity {
+	s.nearProteins = make([]*Entity, 0)
+	do := func(e *Entity) {
+		if e == nil {
+			return
+		}
+
+		nearMe := false
+		nearOpponent := false
+
+		dirs := e.Pos.GetRoseLocality()
+		for _, pos := range dirs {
+			if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+				continue
+			}
+			newPos := s.getByPos(pos)
+			if newPos == nil {
+				continue
+			}
+			if newPos.IsMy() {
+				nearMe = true
+				e.OrganID = newPos.OrganID
+				e.Owner = newPos.Owner
+			}
+			if newPos.IsOpponent() {
+				nearOpponent = true
+			}
+		}
+		if nearMe && nearOpponent {
+			s.nearProteins = append(s.nearProteins, e)
+		}
+	}
+
+	for _, e := range s.proteins {
+		do(e)
+	}
+
+	return s.nearProteins
 }
 
 func (s *State) GetFreePos() []*Entity {
