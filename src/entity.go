@@ -11,10 +11,12 @@ type Entity struct {
 	OrganParentID int
 	OrganRootID   int
 
-	NextDistance float64
-	Score        float64
-	Protein      *Entity
-	CanAttack    bool
+	NextDistance  float64
+	Score         float64
+	Protein       *Entity
+	CanAttack     bool
+	ClusterCenter bool
+	SporeTo       Position
 }
 
 func (e *Entity) Scan() {
@@ -38,7 +40,7 @@ func (e *Entity) GrowSporer(direction string) string {
 }
 
 func (e *Entity) Spore() string {
-	return fmt.Sprintf("%s %d %d %d", SporeCmd, e.OrganID, e.Protein.Pos.X, e.Protein.Pos.Y)
+	return fmt.Sprintf("%s %d %d %d", SporeCmd, e.OrganID, e.SporeTo.X, e.SporeTo.Y)
 }
 
 func (e *Entity) IsWall() bool {
@@ -106,7 +108,7 @@ func (e *Entity) IsNeutral() bool {
 }
 
 func (e *Entity) ToLog() string {
-	return fmt.Sprintf("(%d:%d)%s:%d:%d:%.2f", e.Pos.X, e.Pos.Y, e.Type, e.OrganID, e.Owner, e.NextDistance)
+	return fmt.Sprintf("(%d:%d)%s:%d:%d:%.2f", e.Pos.X, e.Pos.Y, e.Type, e.OrganRootID, e.Owner, e.NextDistance)
 }
 
 func (e *Entity) ID() string {

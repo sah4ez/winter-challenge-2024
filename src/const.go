@@ -21,3 +21,4 @@ const BProteinTypeEntity = "B"
 const CProteinTypeEntity = "C"
 const DProteinTypeEntity = "D"
 const DoNotUseEntityDistance = 9999
+const ClusterCenter = "✨"

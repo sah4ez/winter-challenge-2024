@@ -18,6 +18,7 @@ type State struct {
 	mySporer    []*Entity
 	myRoot      []*Entity
 	oppEntities []*Entity
+	oppRoot     []*Entity
 	entities    []*Entity
 	proteins    []*Entity
 
@@ -27,6 +28,10 @@ type State struct {
 	nearProteins    []*Entity
 	eatProtein      map[string]*Entity
 	localityOppoent map[string]*Entity
+
+	proteinsClusters Clusters
+	opponentClusters Clusters
+	myClusters       Clusters
 
 	w int
 	h int
@@ -43,6 +48,7 @@ func (s *State) ScanEnties() {
 	s.myRoot = make([]*Entity, 0)
 	s.oppEntities = make([]*Entity, 0)
 	s.proteins = make([]*Entity, 0)
+	s.oppRoot = make([]*Entity, 0)
 	s.nextEntity = make([]*Entity, 0)
 	s.nextHash = make(map[string]*Entity, 0)
 	s.eatProtein = make(map[string]*Entity, 0)
@@ -51,11 +57,15 @@ func (s *State) ScanEnties() {
 	for i := 0; i < s.w; i++ {
 		s.matrix = append(s.matrix, make([]*Entity, s.h))
 	}
+	var proteinsObs Observations
+	var opponentObs Observations
+	var myObs Observations
 
 	for i := 0; i < s.EntityCount; i++ {
 		e := NewEntity()
 		if e.IsMy() {
 			s.myEntities = append(s.myEntities, e)
+			myObs = append(myObs, e.Pos.ToCoordinates())
 			if e.IsSporer() {
 				s.mySporer = append(s.mySporer, e)
 			}
@@ -63,18 +73,58 @@ func (s *State) ScanEnties() {
 				s.myRoot = append(s.myRoot, e)
 			}
 		} else if e.IsOpponent() {
+			opponentObs = append(opponentObs, e.Pos.ToCoordinates())
 			s.oppEntities = append(s.oppEntities, e)
+			if e.IsRoot() {
+				s.oppRoot = append(s.oppRoot, e)
+			}
 		} else {
 			s.entities = append(s.entities, e)
 			if e.IsProtein() {
-				if s.HasNeigbourHarvester(e) {
-					s.eatProtein[e.ID()] = e
-				}
+				proteinsObs = append(proteinsObs, e.Pos.ToCoordinates())
 				s.proteins = append(s.proteins, e)
 			}
 		}
 		s.matrix[e.Pos.Y][e.Pos.X] = e
 	}
+
+	for _, e := range s.proteins {
+		if s.HasNeigbourHarvester(e) {
+			// скорее всего работает не корректно
+			s.eatProtein[e.ID()] = e
+		}
+	}
+
+	{
+		km := NewKmenas()
+		s.proteinsClusters, _ = km.Partition(proteinsObs, 5)
+	}
+	// {
+	// km := NewKmenas()
+	// s.opponentClusters, _ = km.Partition(opponentObs, len(s.oppRoot))
+	// }
+	// {
+	// km := NewKmenas()
+	// s.myClusters, _ = km.Partition(proteinsObs, len(s.myRoot))
+	// }
+	markCoordinates := func(cc Clusters) {
+		for _, c := range cc {
+			p := FromCoordinates(c.Center.Coordinates())
+			if s.matrix[p.Y][p.X] != nil {
+				s.matrix[p.Y][p.X].ClusterCenter = true
+			} else {
+				s.matrix[p.Y][p.X] = &Entity{
+					Pos:           p,
+					ClusterCenter: true,
+					Type:          FreeTypeEntity,
+					Owner:         -1,
+				}
+			}
+		}
+	}
+	markCoordinates(s.proteinsClusters)
+	// markCoordinates(s.opponentClusters)
+	// markCoordinates(s.myClusters)
 }
 
 func (s *State) ScanStocks() {
@@ -87,7 +137,7 @@ func (s *State) ScanReqActions() {
 	fmt.Scan(&s.RequiredActionsCount)
 }
 
-func (s *State) DoAction() {
+func (s *State) DoAction(g *Game) {
 	for i := 0; i < s.RequiredActionsCount; i++ {
 		_ = s.GetFreePos()
 		_ = s.GetNearProteins()
@@ -103,33 +153,103 @@ func (s *State) DoAction() {
 		return
 	}
 
-	for _, e := range s.nextEntity[:s.RequiredActionsCount] {
-		DebugMsg(">", e.ToLog())
-		// if len(s.mySporer) > 0 && organs.HasRoot() && len(s.myRoot)+1 == len(s.mySporer) && e.NextDistance > 1 {
-		// sporer := s.mySporer[0]
-		// sporer.Protein = &Entity{Pos: sporer.Pos}
-		// dir := sporer.OrganDir
-		// DebugMsg(">", dir)
-		// var needSpore bool
-		// if dir == DirE {
-		// sporer.Protein.Pos.Y = e.Pos.Y
-		// needSpore = sporer.Protein.Pos.X < e.Pos.X
-		// } else if dir == DirW {
-		// sporer.Protein.Pos.Y = e.Pos.Y
-		// needSpore = sporer.Protein.Pos.X > e.Pos.X
-		// } else if dir == DirN {
-		// sporer.Protein.Pos.Y = e.Pos.Y
-		// needSpore = sporer.Protein.Pos.Y < e.Pos.Y
-		// } else if dir == DirS {
-		// sporer.Protein.Pos.X = e.Pos.X
-		// needSpore = sporer.Protein.Pos.Y > e.Pos.Y
-		// }
-		// DebugMsg(">", needSpore, sporer.Protein.ID(), e.ID(), sporer.ID())
-		// if needSpore {
-		// fmt.Println(sporer.Spore())
-		// continue
-		// }
-		// }
+	rootUsed := make(map[int]struct{}, 0)
+
+	for i := 0; i < s.RequiredActionsCount; i++ {
+		e := s.first()
+		if e == nil {
+			fmt.Println("WAIT") // Write action to stdout
+			continue
+		}
+		DebugMsg(">", e.ToLog(), rootUsed)
+		if _, ok := rootUsed[e.OrganRootID]; ok {
+			used := true
+			for used {
+				e = s.first()
+				if e == nil {
+					break
+				}
+				DebugMsg(">", e.ToLog(), rootUsed)
+				if _, ok := rootUsed[e.OrganRootID]; !ok {
+					used = false
+				}
+			}
+		}
+		if e == nil {
+			fmt.Println("WAIT") // Write action to stdout
+			continue
+		}
+		rootUsed[e.OrganRootID] = struct{}{}
+
+		if len(s.mySporer) > 0 && organs.HasRoot() && g.HasSporer() {
+			from, to := g.SporerPonits()
+			g.StopSporer()
+			// DebugMsg("sporer stop", from.ToLog(), "->", to.ToLog())
+			sporer := s.getByPos(from)
+			dir := sporer.OrganDir
+			shift := true
+			var cancelShift func()
+			total := 0
+			for shift {
+				if total == 8 {
+					break
+				}
+				switch dir {
+				case DirE:
+					from.X += 1
+					if from.X >= to.X {
+						shift = false
+					}
+					cancelShift = func() {
+						from.X -= 1
+					}
+				case DirW:
+					from.X -= 1
+					if from.X <= to.X {
+						shift = false
+					}
+					cancelShift = func() {
+						from.X += 1
+					}
+				case DirN:
+					from.Y -= 1
+					if from.Y <= to.Y {
+						shift = false
+					}
+					cancelShift = func() {
+						from.Y += 1
+					}
+				case DirS:
+					from.Y += 1
+					if from.Y <= to.Y {
+						shift = false
+					}
+					cancelShift = func() {
+						from.Y -= 1
+					}
+				}
+				total += 1
+			}
+			// DebugMsg("sporer condition:", from.ToLog())
+			pos := s.getByPos(from)
+			if pos == nil {
+				sporer.SporeTo = from
+				fmt.Println(sporer.Spore())
+				continue
+			}
+			// DebugMsg("sporer condition:", from.ToLog(), pos.ToLog())
+			if pos.IsEmpty() || pos.IsFree() {
+				sporer.SporeTo = from
+				fmt.Println(sporer.Spore())
+				continue
+			}
+			if pos.IsWall() && cancelShift != nil {
+				cancelShift()
+				sporer.SporeTo = from
+				fmt.Println(sporer.Spore())
+				continue
+			}
+		}
 		if e.CanAttack {
 			if organs.HasTentacle() {
 				fmt.Println(e.GrowTentacle(s.GetTentacleDir(e)))
@@ -142,12 +262,24 @@ func (s *State) DoAction() {
 				continue
 			}
 		}
-		// if len(s.mySporer) == 0 || len(s.myRoot) == len(s.mySporer) {
-		// if organs.HasSporer() {
-		// fmt.Println(e.GrowSporer(e.OrganDir))
-		// continue
-		// }
-		// }
+		if len(s.mySporer) == 0 || len(s.myRoot) > len(s.mySporer) {
+			if organs.HasSporer() && organs.HasRoot() && s.MyStock.D >= 2 {
+				clusterID := s.proteinsClusters.Nearest(e.Pos.ToCoordinates())
+				if len(s.proteinsClusters) > 0 {
+					cluster := s.proteinsClusters[clusterID]
+					clusterCenter := FromCoordinates(cluster.Center.Coordinates())
+					centerEntites := s.getByPos(clusterCenter)
+					if !centerEntites.IsMy() && !centerEntites.IsOpponent() {
+						g.StartSporer(e.Pos, clusterCenter)
+						DebugMsg("sporer start:", e.ToLog(), "cluster center", clusterCenter.ToLog())
+						fmt.Println(e.GrowSporer(s.GetSporerDir(e, clusterCenter)))
+						continue
+					} else {
+						DebugMsg("not free", e.ToLog(), "cluster center", clusterCenter.ToLog())
+					}
+				}
+			}
+		}
 		if organs.HasBasic() {
 			fmt.Println(e.GrowBasic())
 			continue
@@ -167,27 +299,36 @@ func (s *State) DoAction() {
 			fmt.Println(e.GrowTentacle(s.GetTentacleDir(e)))
 			continue
 		}
-		// }
 		fmt.Println("WAIT") // Write action to stdout
 	}
-
-	if len(s.nextEntity) == 0 {
-		for i := 0; i < s.RequiredActionsCount; i++ {
-			fmt.Println("WAIT") // Write action to stdout
-		}
-	}
-
 }
 
-func (s *State) Debug() {
+func (s *State) Debug(full bool) {
 	DebugMsg("my", *s.MyStock)
 	DebugMsg("opp", *s.OpponentStock)
 	for i, k := range s.matrix {
 		for j, n := range k {
 			if n != nil {
-				fmt.Fprintf(os.Stderr, " %c(%d;%d;%.2f) ", n.Type[0], j, i, n.NextDistance)
+				var clusterCenter = ""
+				if n.ClusterCenter {
+					clusterCenter = ClusterCenter
+				}
+				if full {
+					fmt.Fprintf(os.Stderr, " %c%s(%d;%d;%.2f) ", n.Type[0], clusterCenter, j, i, n.NextDistance)
+				} else {
+					if clusterCenter == "" {
+						fmt.Fprintf(os.Stderr, " %c ", n.Type[0])
+					} else {
+						fmt.Fprintf(os.Stderr, " %s ", clusterCenter)
+					}
+				}
 			} else {
-				fmt.Fprintf(os.Stderr, " _(%d;%d) ", j, i)
+				if full {
+					fmt.Fprintf(os.Stderr, " _(%d;%d) ", j, i)
+				} else {
+					fmt.Fprintf(os.Stderr, " _ ")
+				}
+
 			}
 		}
 		fmt.Fprint(os.Stderr, "\n")
@@ -251,12 +392,7 @@ func (s *State) GetFreePos() []*Entity {
 		if e == nil {
 			return
 		}
-		dirs := []Position{
-			e.Pos.Up(),
-			e.Pos.Down(),
-			e.Pos.Left(),
-			e.Pos.Right(),
-		}
+		dirs := e.Pos.GetRoseLocality()
 		for _, pos := range dirs {
 			if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
 				continue
@@ -275,7 +411,7 @@ func (s *State) GetFreePos() []*Entity {
 					if e != nil && e.IsOpponent() && e.IsTentacle() {
 						posAttack := e.TentacleAttackPosition()
 						if posAttack.Equal(newPos.Pos) {
-							DebugMsg("attack ->", newPos.ToLog())
+							// DebugMsg("attack ->", newPos.ToLog())
 							underAttack = true
 						}
 					}
@@ -289,6 +425,8 @@ func (s *State) GetFreePos() []*Entity {
 			if newPos == nil || (useProtein && newPos.IsProtein()) {
 				newPos = &Entity{Pos: pos}
 				newPos.OrganID = e.OrganID
+				newPos.OrganParentID = e.OrganParentID
+				newPos.OrganRootID = e.OrganRootID
 				s.freePos = append(s.freePos, newPos)
 			}
 		}
@@ -344,12 +482,7 @@ func (s *State) HasNeigbourHarvester(e *Entity) bool {
 		return false
 	}
 
-	dirs := []Position{
-		e.Pos.Up(),
-		e.Pos.Down(),
-		e.Pos.Left(),
-		e.Pos.Right(),
-	}
+	dirs := e.Pos.GetRoseLocality()
 	for _, pos := range dirs {
 		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
 			continue
@@ -472,40 +605,32 @@ func (s *State) GetTentacleDir(e *Entity) string {
 	return ""
 }
 
-func (s *State) GetSporerDir(from, to *Entity) string {
-	if from == nil || to == nil {
+func (s *State) GetSporerDir(from *Entity, to Position) string {
+	if from == nil {
 		return ""
 	}
-	dx := to.Pos.X - from.Pos.X
-	dy := to.Pos.Y - from.Pos.Y
-
-	if dx == 0 {
-		if dy > 0 {
-			return DirN
-		}
+	degree := PointToAngle(from.Pos, to)
+	if -45 <= degree && degree <= 45 {
 		return DirS
 	}
-	if dy == 0 {
-		if dx > 0 {
-			return DirE
-		}
-		return DirW
-	}
-
-	tanF := float64(dy) / float64(dx)
-	if tanF < 1 && tanF > -1 {
+	if 45 <= degree && degree <= 135 {
 		return DirE
 	}
-
-	if tanF < -1 || tanF > 1 {
+	if -135 <= degree && degree <= -45 {
 		return DirW
 	}
 
-	if dy < 0 {
-		return DirN
-	}
+	return DirN
+}
 
-	return DirS
+func (s *State) first() *Entity {
+
+	if len(s.nextEntity) == 0 {
+		return nil
+	}
+	result := s.nextEntity[0]
+	s.nextEntity = append(s.nextEntity[:0], s.nextEntity[1:]...)
+	return result
 }
 
 func NewState(h, w int) *State {

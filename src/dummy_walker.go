@@ -8,6 +8,7 @@ func (s *State) Dummy(e *Entity) bool {
 		return false
 	}
 
+	needAttack := false
 	for _, attackOverProtein := range s.nearProteins {
 		if s.MyStock.GetPercent(attackOverProtein.Type) < 0.4 {
 			continue
@@ -18,10 +19,11 @@ func (s *State) Dummy(e *Entity) bool {
 		if _, ok := s.nextHash[attackOverProtein.ID()]; !ok {
 			s.nextHash[attackOverProtein.ID()] = attackOverProtein
 			s.nextEntity = append(s.nextEntity, attackOverProtein)
-			DebugMsg("protein attack -> ", attackOverProtein.ToLog())
+			// DebugMsg("protein attack -> ", attackOverProtein.ToLog())
+			needAttack = true
 		}
 	}
-	if len(s.nextEntity) > 0 {
+	if needAttack {
 		return false
 	}
 
@@ -40,7 +42,7 @@ func (s *State) Dummy(e *Entity) bool {
 
 		dirs := free.Pos.GetLocality()
 		for _, pos := range dirs {
-			if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+			if !s.InMatrix(pos) {
 				continue
 			}
 			e := s.getByPos(pos)
@@ -51,7 +53,7 @@ func (s *State) Dummy(e *Entity) bool {
 				s.localityOppoent[e.ID()] = e
 				free.NextDistance = 0.0
 				free.CanAttack = true
-				DebugMsg("exist opponent:", free.ToLog(), e.ToLog())
+				// DebugMsg("exist opponent:", free.ToLog(), e.ToLog())
 				s.freePos[i] = free
 			}
 		}
@@ -68,6 +70,7 @@ func (s *State) Dummy(e *Entity) bool {
 			NextDistance: free.NextDistance,
 			Owner:        -1,
 			CanAttack:    free.CanAttack,
+			OrganRootID:  free.OrganRootID,
 		}
 		if free.CanAttack {
 			min = free
@@ -79,8 +82,6 @@ func (s *State) Dummy(e *Entity) bool {
 			min.OrganDir = s.GetHarvesterDir(min)
 			if min.NextDistance == 1 {
 				min.OrganDir = s.GetHarvesterDir(min)
-			} else {
-				min.OrganDir = s.GetSporerDir(min, min.Protein)
 			}
 		}
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 )
 
@@ -53,4 +54,27 @@ func (p Position) GetRoseLocality() []Position {
 
 func (from Position) Distance(to Position) float64 {
 	return math.Sqrt(math.Pow(float64(to.X-from.X), 2) + math.Pow(float64(to.Y-from.Y), 2))
+}
+
+func (p Position) ToCoordinates() Coordinates {
+	return Coordinates{
+		float64(p.X),
+		float64(p.Y),
+	}
+}
+
+func (p Position) ToLog() string {
+	return fmt.Sprintf("(%d:%d)", p.X, p.Y)
+}
+
+func FromCoordinates(c Coordinates) Position {
+	if len(c) != 2 {
+		panic("invalid coordinates")
+	}
+	return Position{X: int(c[0]), Y: int(c[1])}
+}
+
+func (s *State) InMatrix(p Position) bool {
+	out := p.X < 0 || p.Y < 0 || p.Y >= s.w || p.X >= s.h
+	return !out
 }

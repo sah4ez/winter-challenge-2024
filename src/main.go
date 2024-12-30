@@ -13,8 +13,9 @@ func main() {
 		state.ScanStocks()
 		state.ScanReqActions()
 
-		state.DoAction()
-		// state.Debug()
+		state.DoAction(game)
+		full := false
+		state.Debug(full)
 		// DebugMsg("step: ", step)
 		// step += 1
 	}
