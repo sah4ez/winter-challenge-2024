@@ -178,7 +178,10 @@ func (s *State) Dummy(e *Entity) bool {
 	for i, free := range s.freePos {
 		if s.MyStock.CanAttack() {
 			for _, opp := range s.oppEntities {
-				if _, ok := s.s.scanOppoent[opp.ID()]; ok {
+				if _, ok := s.scanOppoent[opp.ID()]; ok {
+					continue
+				}
+				if !s.FreeOppEntites(opp) {
 					continue
 				}
 				newDistance := free.Pos.Distance(opp.Pos)
@@ -187,6 +190,7 @@ func (s *State) Dummy(e *Entity) bool {
 					free.CanAttack = true
 					s.freePos[i] = free
 				}
+				s.scanOppoent[opp.ID()] = opp
 			}
 		} else {
 			for _, protein := range s.proteins {
@@ -1041,13 +1045,20 @@ func (s *State) DoAction(g *Game) {
 			}
 		}
 
+		if s.MyStock.CanAttack() {
+			if organs.HasTentacle() {
+				fmt.Println(e.GrowTentacle(s.GetTentacleDir(e)))
+				continue
+			}
+		}
+
 		if s.HasProtein(e) && organs.HasHarvester() {
 			if dir := s.GetHarvesterDir(e); dir != "" {
 				fmt.Println(e.GrowHarvester(dir))
 				continue
 			}
 		}
-		if len(s.mySporer) == 0 || len(s.myRoot) > len(s.mySporer) {
+		if len(s.mySporer) == 0 || len(s.myRoot) >= len(s.mySporer) {
 			if organs.HasSporer() && organs.HasRoot() && s.MyStock.D >= 2 {
 				clusterID := s.proteinsClusters.Nearest(e.Pos.ToCoordinates())
 				if len(s.proteinsClusters) > 0 {
@@ -1428,6 +1439,29 @@ func (s *State) FreeEntites(e *Entity) bool {
 		e := s.getByPos(pos)
 		if e != nil {
 			if e.IsProtein() || e.IsOpponent() {
+				full = append(full, struct{}{})
+			}
+		} else {
+			full = append(full, struct{}{})
+		}
+	}
+	return len(full) > 0
+}
+
+func (s *State) FreeOppEntites(e *Entity) bool {
+	if e == nil {
+		return false
+	}
+
+	dirs := e.Pos.GetRoseLocality()
+	full := []struct{}{}
+	for _, pos := range dirs {
+		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+			continue
+		}
+		e := s.getByPos(pos)
+		if e != nil {
+			if e.IsProtein() {
 				full = append(full, struct{}{})
 			}
 		} else {

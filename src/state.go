@@ -282,7 +282,7 @@ func (s *State) DoAction(g *Game) {
 				continue
 			}
 		}
-		if len(s.mySporer) == 0 || len(s.myRoot) > len(s.mySporer) {
+		if len(s.mySporer) == 0 || len(s.myRoot) >= len(s.mySporer) {
 			if organs.HasSporer() && organs.HasRoot() && s.MyStock.D >= 2 {
 				clusterID := s.proteinsClusters.Nearest(e.Pos.ToCoordinates())
 				if len(s.proteinsClusters) > 0 {
@@ -437,6 +437,15 @@ func (s *State) GetFreePos() []*Entity {
 			if underAttack {
 				continue
 			}
+			if newPos == nil && newPos.IsProtein() {
+				if s.MyStock.NeedCollectProtein(newPos.Type) {
+					newPos = &Entity{Pos: pos}
+					newPos.OrganID = e.OrganID
+					newPos.OrganParentID = e.OrganParentID
+					newPos.OrganRootID = e.OrganRootID
+					s.freePos = append(s.freePos, newPos)
+				}
+			}
 
 			if newPos == nil || (useProtein && newPos.IsProtein()) {
 				newPos = &Entity{Pos: pos}
@@ -534,7 +543,7 @@ func (s *State) HasProtein(e *Entity) bool {
 		return false
 	}
 
-	dirs := e.Pos.GetLocality()
+	dirs := e.Pos.GetRoseLocality()
 	for _, pos := range dirs {
 		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
 			continue

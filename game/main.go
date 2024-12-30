@@ -1045,13 +1045,20 @@ func (s *State) DoAction(g *Game) {
 			}
 		}
 
+		if s.MyStock.CanAttack() {
+			if organs.HasTentacle() {
+				fmt.Println(e.GrowTentacle(s.GetTentacleDir(e)))
+				continue
+			}
+		}
+
 		if s.HasProtein(e) && organs.HasHarvester() {
 			if dir := s.GetHarvesterDir(e); dir != "" {
 				fmt.Println(e.GrowHarvester(dir))
 				continue
 			}
 		}
-		if len(s.mySporer) == 0 || len(s.myRoot) > len(s.mySporer) {
+		if len(s.mySporer) == 0 || len(s.myRoot) >= len(s.mySporer) {
 			if organs.HasSporer() && organs.HasRoot() && s.MyStock.D >= 2 {
 				clusterID := s.proteinsClusters.Nearest(e.Pos.ToCoordinates())
 				if len(s.proteinsClusters) > 0 {
@@ -1206,6 +1213,15 @@ func (s *State) GetFreePos() []*Entity {
 			if underAttack {
 				continue
 			}
+			if newPos == nil && newPos.IsProtein() {
+				if s.MyStock.NeedCollectProtein(newPos.Type) {
+					newPos = &Entity{Pos: pos}
+					newPos.OrganID = e.OrganID
+					newPos.OrganParentID = e.OrganParentID
+					newPos.OrganRootID = e.OrganRootID
+					s.freePos = append(s.freePos, newPos)
+				}
+			}
 
 			if newPos == nil || (useProtein && newPos.IsProtein()) {
 				newPos = &Entity{Pos: pos}
@@ -1303,7 +1319,7 @@ func (s *State) HasProtein(e *Entity) bool {
 		return false
 	}
 
-	dirs := e.Pos.GetLocality()
+	dirs := e.Pos.GetRoseLocality()
 	for _, pos := range dirs {
 		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
 			continue
@@ -1553,6 +1569,22 @@ func (s *Stock) IncByType(protein string) int {
 		return s.DPerStep
 	}
 	return 0.0
+}
+
+func (s *Stock) NeedCollectProtein(protein string) bool {
+	if protein == AProteinTypeEntity {
+		return s.APerStep == 0 && s.A == 0
+	}
+	if protein == BProteinTypeEntity {
+		return s.BPerStep == 0 && s.B == 0
+	}
+	if protein == CProteinTypeEntity {
+		return s.CPerStep == 0 && s.C == 0
+	}
+	if protein == DProteinTypeEntity {
+		return s.DPerStep == 0 && s.D == 0
+	}
+	return false
 }
 
 func (s *Stock) StockProduction() string {

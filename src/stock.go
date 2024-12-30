@@ -68,6 +68,22 @@ func (s *Stock) IncByType(protein string) int {
 	return 0.0
 }
 
+func (s *Stock) NeedCollectProtein(protein string) bool {
+	if protein == AProteinTypeEntity {
+		return s.APerStep == 0 && s.A == 0
+	}
+	if protein == BProteinTypeEntity {
+		return s.BPerStep == 0 && s.B == 0
+	}
+	if protein == CProteinTypeEntity {
+		return s.CPerStep == 0 && s.C == 0
+	}
+	if protein == DProteinTypeEntity {
+		return s.DPerStep == 0 && s.D == 0
+	}
+	return false
+}
+
 func (s *Stock) StockProduction() string {
 	return fmt.Sprintf("A:%d B:%d C:%d D:%d", s.APerStep, s.BPerStep, s.CPerStep, s.DPerStep)
 }
