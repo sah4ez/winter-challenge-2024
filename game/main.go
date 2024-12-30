@@ -176,16 +176,37 @@ func (s *State) Dummy(e *Entity) bool {
 	}
 
 	for i, free := range s.freePos {
-		for _, protein := range s.proteins {
-			if _, ok := s.eatProtein[protein.ID()]; ok {
-				continue
+		if s.MyStock.CanAttack() {
+			for _, opp := range s.oppEntities {
+				if _, ok := s.scanOppoent[opp.ID()]; ok {
+					continue
+				}
+				if !s.FreeOppEntites(opp) {
+					continue
+				}
+				newDistance := free.Pos.Distance(opp.Pos)
+				if math.Abs(newDistance) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && newDistance >= 0) {
+					free.NextDistance = math.Abs(newDistance)
+					free.CanAttack = true
+					s.freePos[i] = free
+				}
+				s.scanOppoent[opp.ID()] = opp
 			}
-			newDistance := free.Pos.Distance(protein.Pos)
-			if math.Abs(newDistance) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && newDistance >= 0) {
-				free.NextDistance = math.Abs(newDistance) / s.MyStock.GetPercent(protein.Type)
-				free.Protein = protein
-				s.freePos[i] = free
+		} else {
+			for _, protein := range s.proteins {
+				if _, ok := s.eatProtein[protein.ID()]; ok {
+					continue
+				}
+				newDistance := free.Pos.Distance(protein.Pos)
+				if math.Abs(newDistance) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && newDistance >= 0) {
+					free.NextDistance = math.Abs(newDistance) / s.MyStock.GetPercent(protein.Type)
+					free.Protein = protein
+					s.freePos[i] = free
+				}
 			}
+		}
+		if !s.FreeEntites(free) {
+			free.NextDistance += 30
 		}
 
 		dirs := free.Pos.GetLocality()
@@ -418,7 +439,7 @@ func (g *Game) SporerPonits() (from, to Position) {
 	return *g.sporerFrom, *g.sporerTo
 }
 
-func (g *Game) HasSporer() bool {
+func (g *Game) HasSporerPoints() bool {
 	return g.sporerFrom != nil && g.sporerTo != nil
 }
 
@@ -552,8 +573,8 @@ func main() {
 		state.ScanReqActions()
 
 		state.DoAction(game)
-		full := false
-		state.Debug(full)
+		// full := false
+		// state.Debug(full)
 		// DebugMsg("step: ", step)
 		// step += 1
 	}
@@ -782,6 +803,7 @@ type State struct {
 	freePos         []*Entity
 	nearProteins    []*Entity
 	eatProtein      map[string]*Entity
+	scanOppoent     map[string]*Entity
 	localityOppoent map[string]*Entity
 
 	proteinsClusters Clusters
@@ -804,9 +826,11 @@ func (s *State) ScanEnties() {
 	s.oppEntities = make([]*Entity, 0)
 	s.proteins = make([]*Entity, 0)
 	s.oppRoot = make([]*Entity, 0)
+
 	s.nextEntity = make([]*Entity, 0)
 	s.nextHash = make(map[string]*Entity, 0)
 	s.eatProtein = make(map[string]*Entity, 0)
+	s.scanOppoent = make(map[string]*Entity, 0)
 	s.localityOppoent = make(map[string]*Entity, 0)
 	s.matrix = make([][]*Entity, 0)
 	for i := 0; i < s.w; i++ {
@@ -845,7 +869,6 @@ func (s *State) ScanEnties() {
 
 	for _, e := range s.proteins {
 		if s.HasNeigbourHarvester(e) {
-			// скорее всего работает не корректно
 			s.eatProtein[e.ID()] = e
 		}
 	}
@@ -885,6 +908,11 @@ func (s *State) ScanEnties() {
 func (s *State) ScanStocks() {
 	s.MyStock = NewStock()
 	s.OpponentStock = NewStock()
+
+	for _, ep := range s.eatProtein {
+		s.MyStock.IncByType(ep.Type)
+	}
+	DebugMsg("eat protens:", s.MyStock.StockProduction())
 }
 
 func (s *State) ScanReqActions() {
@@ -899,6 +927,9 @@ func (s *State) DoAction(g *Game) {
 		s.walk(0, 0, s.Dummy)
 	}
 	organs := s.AvailableOrang()
+	for _, e := range s.nextEntity {
+		DebugMsg(">>>", e.ToLog())
+	}
 	DebugMsg("organs: ", organs, len(s.nextEntity))
 	DebugMsg("proteins: ", s.MyStock)
 	if len(s.nextEntity) == 0 {
@@ -916,7 +947,6 @@ func (s *State) DoAction(g *Game) {
 			fmt.Println("WAIT") // Write action to stdout
 			continue
 		}
-		DebugMsg(">", e.ToLog(), rootUsed)
 		if _, ok := rootUsed[e.OrganRootID]; ok {
 			used := true
 			for used {
@@ -935,8 +965,11 @@ func (s *State) DoAction(g *Game) {
 			continue
 		}
 		rootUsed[e.OrganRootID] = struct{}{}
+		if g.HasSporerPoints() {
+			DebugMsg("has sporer points")
+		}
 
-		if len(s.mySporer) > 0 && organs.HasRoot() && g.HasSporer() {
+		if len(s.mySporer) > 0 && organs.HasRoot() && g.HasSporerPoints() {
 			from, to := g.SporerPonits()
 			g.StopSporer()
 			// DebugMsg("sporer stop", from.ToLog(), "->", to.ToLog())
@@ -1011,6 +1044,7 @@ func (s *State) DoAction(g *Game) {
 				continue
 			}
 		}
+
 		if s.HasProtein(e) && organs.HasHarvester() {
 			if dir := s.GetHarvesterDir(e); dir != "" {
 				fmt.Println(e.GrowHarvester(dir))
@@ -1044,10 +1078,6 @@ func (s *State) DoAction(g *Game) {
 				fmt.Println(e.GrowHarvester(dir))
 				continue
 			}
-		}
-		if organs.HasSporer() {
-			fmt.Println(e.GrowSporer(e.OrganDir))
-			continue
 		}
 
 		if organs.HasTentacle() {
@@ -1388,6 +1418,52 @@ func (s *State) first() *Entity {
 	return result
 }
 
+func (s *State) FreeEntites(e *Entity) bool {
+	if e == nil {
+		return false
+	}
+
+	dirs := e.Pos.GetRoseLocality()
+	full := []struct{}{}
+	for _, pos := range dirs {
+		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+			continue
+		}
+		e := s.getByPos(pos)
+		if e != nil {
+			if e.IsProtein() || e.IsOpponent() {
+				full = append(full, struct{}{})
+			}
+		} else {
+			full = append(full, struct{}{})
+		}
+	}
+	return len(full) > 0
+}
+
+func (s *State) FreeOppEntites(e *Entity) bool {
+	if e == nil {
+		return false
+	}
+
+	dirs := e.Pos.GetRoseLocality()
+	full := []struct{}{}
+	for _, pos := range dirs {
+		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+			continue
+		}
+		e := s.getByPos(pos)
+		if e != nil {
+			if e.IsProtein() {
+				full = append(full, struct{}{})
+			}
+		} else {
+			full = append(full, struct{}{})
+		}
+	}
+	return len(full) > 0
+}
+
 func NewState(h, w int) *State {
 	s := &State{
 		entities:        make([]*Entity, 0),
@@ -1425,6 +1501,11 @@ type Stock struct {
 
 	D        int
 	PercentD float64
+
+	APerStep int
+	BPerStep int
+	CPerStep int
+	DPerStep int
 }
 
 func (s *Stock) Scan() {
@@ -1452,6 +1533,34 @@ func (s *Stock) GetPercent(protein string) float64 {
 		return s.PercentD
 	}
 	return 0.0
+}
+
+func (s *Stock) IncByType(protein string) int {
+	if protein == AProteinTypeEntity {
+		s.APerStep += 1
+		return s.APerStep
+	}
+	if protein == BProteinTypeEntity {
+		s.BPerStep += 1
+		return s.BPerStep
+	}
+	if protein == CProteinTypeEntity {
+		s.CPerStep += 1
+		return s.CPerStep
+	}
+	if protein == DProteinTypeEntity {
+		s.DPerStep += 1
+		return s.DPerStep
+	}
+	return 0.0
+}
+
+func (s *Stock) StockProduction() string {
+	return fmt.Sprintf("A:%d B:%d C:%d D:%d", s.APerStep, s.BPerStep, s.CPerStep, s.DPerStep)
+}
+
+func (s *Stock) CanAttack() bool {
+	return s.APerStep >= 2 && s.BPerStep >= 2 && s.CPerStep >= 2 && s.DPerStep >= 2
 }
 
 func NewStock() *Stock {

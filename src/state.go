@@ -27,6 +27,7 @@ type State struct {
 	freePos         []*Entity
 	nearProteins    []*Entity
 	eatProtein      map[string]*Entity
+	scanOppoent     map[string]*Entity
 	localityOppoent map[string]*Entity
 
 	proteinsClusters Clusters
@@ -49,9 +50,11 @@ func (s *State) ScanEnties() {
 	s.oppEntities = make([]*Entity, 0)
 	s.proteins = make([]*Entity, 0)
 	s.oppRoot = make([]*Entity, 0)
+
 	s.nextEntity = make([]*Entity, 0)
 	s.nextHash = make(map[string]*Entity, 0)
 	s.eatProtein = make(map[string]*Entity, 0)
+	s.scanOppoent = make(map[string]*Entity, 0)
 	s.localityOppoent = make(map[string]*Entity, 0)
 	s.matrix = make([][]*Entity, 0)
 	for i := 0; i < s.w; i++ {
@@ -90,7 +93,6 @@ func (s *State) ScanEnties() {
 
 	for _, e := range s.proteins {
 		if s.HasNeigbourHarvester(e) {
-			// скорее всего работает не корректно
 			s.eatProtein[e.ID()] = e
 		}
 	}
@@ -130,6 +132,11 @@ func (s *State) ScanEnties() {
 func (s *State) ScanStocks() {
 	s.MyStock = NewStock()
 	s.OpponentStock = NewStock()
+
+	for _, ep := range s.eatProtein {
+		s.MyStock.IncByType(ep.Type)
+	}
+	DebugMsg("eat protens:", s.MyStock.StockProduction())
 }
 
 func (s *State) ScanReqActions() {
@@ -144,6 +151,9 @@ func (s *State) DoAction(g *Game) {
 		s.walk(0, 0, s.Dummy)
 	}
 	organs := s.AvailableOrang()
+	for _, e := range s.nextEntity {
+		DebugMsg(">>>", e.ToLog())
+	}
 	DebugMsg("organs: ", organs, len(s.nextEntity))
 	DebugMsg("proteins: ", s.MyStock)
 	if len(s.nextEntity) == 0 {
@@ -161,7 +171,6 @@ func (s *State) DoAction(g *Game) {
 			fmt.Println("WAIT") // Write action to stdout
 			continue
 		}
-		DebugMsg(">", e.ToLog(), rootUsed)
 		if _, ok := rootUsed[e.OrganRootID]; ok {
 			used := true
 			for used {
@@ -180,8 +189,11 @@ func (s *State) DoAction(g *Game) {
 			continue
 		}
 		rootUsed[e.OrganRootID] = struct{}{}
+		if g.HasSporerPoints() {
+			DebugMsg("has sporer points")
+		}
 
-		if len(s.mySporer) > 0 && organs.HasRoot() && g.HasSporer() {
+		if len(s.mySporer) > 0 && organs.HasRoot() && g.HasSporerPoints() {
 			from, to := g.SporerPonits()
 			g.StopSporer()
 			// DebugMsg("sporer stop", from.ToLog(), "->", to.ToLog())
@@ -256,6 +268,14 @@ func (s *State) DoAction(g *Game) {
 				continue
 			}
 		}
+
+		if s.MyStock.CanAttack() {
+			if organs.HasTentacle() {
+				fmt.Println(e.GrowTentacle(s.GetTentacleDir(e)))
+				continue
+			}
+		}
+
 		if s.HasProtein(e) && organs.HasHarvester() {
 			if dir := s.GetHarvesterDir(e); dir != "" {
 				fmt.Println(e.GrowHarvester(dir))
@@ -289,10 +309,6 @@ func (s *State) DoAction(g *Game) {
 				fmt.Println(e.GrowHarvester(dir))
 				continue
 			}
-		}
-		if organs.HasSporer() {
-			fmt.Println(e.GrowSporer(e.OrganDir))
-			continue
 		}
 
 		if organs.HasTentacle() {
@@ -631,6 +647,52 @@ func (s *State) first() *Entity {
 	result := s.nextEntity[0]
 	s.nextEntity = append(s.nextEntity[:0], s.nextEntity[1:]...)
 	return result
+}
+
+func (s *State) FreeEntites(e *Entity) bool {
+	if e == nil {
+		return false
+	}
+
+	dirs := e.Pos.GetRoseLocality()
+	full := []struct{}{}
+	for _, pos := range dirs {
+		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+			continue
+		}
+		e := s.getByPos(pos)
+		if e != nil {
+			if e.IsProtein() || e.IsOpponent() {
+				full = append(full, struct{}{})
+			}
+		} else {
+			full = append(full, struct{}{})
+		}
+	}
+	return len(full) > 0
+}
+
+func (s *State) FreeOppEntites(e *Entity) bool {
+	if e == nil {
+		return false
+	}
+
+	dirs := e.Pos.GetRoseLocality()
+	full := []struct{}{}
+	for _, pos := range dirs {
+		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+			continue
+		}
+		e := s.getByPos(pos)
+		if e != nil {
+			if e.IsProtein() {
+				full = append(full, struct{}{})
+			}
+		} else {
+			full = append(full, struct{}{})
+		}
+	}
+	return len(full) > 0
 }
 
 func NewState(h, w int) *State {

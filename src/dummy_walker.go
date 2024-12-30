@@ -28,16 +28,37 @@ func (s *State) Dummy(e *Entity) bool {
 	}
 
 	for i, free := range s.freePos {
-		for _, protein := range s.proteins {
-			if _, ok := s.eatProtein[protein.ID()]; ok {
-				continue
+		if s.MyStock.CanAttack() {
+			for _, opp := range s.oppEntities {
+				if _, ok := s.scanOppoent[opp.ID()]; ok {
+					continue
+				}
+				if !s.FreeOppEntites(opp) {
+					continue
+				}
+				newDistance := free.Pos.Distance(opp.Pos)
+				if math.Abs(newDistance) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && newDistance >= 0) {
+					free.NextDistance = math.Abs(newDistance)
+					free.CanAttack = true
+					s.freePos[i] = free
+				}
+				s.scanOppoent[opp.ID()] = opp
 			}
-			newDistance := free.Pos.Distance(protein.Pos)
-			if math.Abs(newDistance) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && newDistance >= 0) {
-				free.NextDistance = math.Abs(newDistance) / s.MyStock.GetPercent(protein.Type)
-				free.Protein = protein
-				s.freePos[i] = free
+		} else {
+			for _, protein := range s.proteins {
+				if _, ok := s.eatProtein[protein.ID()]; ok {
+					continue
+				}
+				newDistance := free.Pos.Distance(protein.Pos)
+				if math.Abs(newDistance) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && newDistance >= 0) {
+					free.NextDistance = math.Abs(newDistance) / s.MyStock.GetPercent(protein.Type)
+					free.Protein = protein
+					s.freePos[i] = free
+				}
 			}
+		}
+		if !s.FreeEntites(free) {
+			free.NextDistance += 30
 		}
 
 		dirs := free.Pos.GetLocality()

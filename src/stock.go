@@ -14,6 +14,11 @@ type Stock struct {
 
 	D        int
 	PercentD float64
+
+	APerStep int
+	BPerStep int
+	CPerStep int
+	DPerStep int
 }
 
 func (s *Stock) Scan() {
@@ -41,6 +46,34 @@ func (s *Stock) GetPercent(protein string) float64 {
 		return s.PercentD
 	}
 	return 0.0
+}
+
+func (s *Stock) IncByType(protein string) int {
+	if protein == AProteinTypeEntity {
+		s.APerStep += 1
+		return s.APerStep
+	}
+	if protein == BProteinTypeEntity {
+		s.BPerStep += 1
+		return s.BPerStep
+	}
+	if protein == CProteinTypeEntity {
+		s.CPerStep += 1
+		return s.CPerStep
+	}
+	if protein == DProteinTypeEntity {
+		s.DPerStep += 1
+		return s.DPerStep
+	}
+	return 0.0
+}
+
+func (s *Stock) StockProduction() string {
+	return fmt.Sprintf("A:%d B:%d C:%d D:%d", s.APerStep, s.BPerStep, s.CPerStep, s.DPerStep)
+}
+
+func (s *Stock) CanAttack() bool {
+	return s.APerStep >= 2 && s.BPerStep >= 2 && s.CPerStep >= 2 && s.DPerStep >= 2
 }
 
 func NewStock() *Stock {

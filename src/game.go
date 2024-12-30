@@ -42,7 +42,7 @@ func (g *Game) SporerPonits() (from, to Position) {
 	return *g.sporerFrom, *g.sporerTo
 }
 
-func (g *Game) HasSporer() bool {
+func (g *Game) HasSporerPoints() bool {
 	return g.sporerFrom != nil && g.sporerTo != nil
 }
 
