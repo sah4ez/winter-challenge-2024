@@ -118,6 +118,15 @@ func (s *Stock) CanAttack() bool {
 	return s.APerStep >= 2 && s.BPerStep >= 2 && s.CPerStep >= 2 && s.DPerStep >= 2
 }
 
+func (s *Stock) String() string {
+	return fmt.Sprintf("A:%d %.2f %d B:%d %.2f %d C:%d %.2f %d D:%d %.2f %d",
+		s.APerStep, s.PercentA, s.A,
+		s.BPerStep, s.PercentB, s.B,
+		s.CPerStep, s.PercentC, s.C,
+		s.DPerStep, s.PercentD, s.D,
+	)
+}
+
 func NewStock() *Stock {
 	s := &Stock{}
 	s.Scan()

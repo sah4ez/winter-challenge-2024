@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"sort"
 )
 
 type State struct {
@@ -84,7 +85,6 @@ func (s *State) ScanEnties() {
 		} else {
 			s.entities = append(s.entities, e)
 			if e.IsProtein() {
-				proteinsObs = append(proteinsObs, e.Pos.ToCoordinates())
 				s.proteins = append(s.proteins, e)
 			}
 		}
@@ -98,8 +98,18 @@ func (s *State) ScanEnties() {
 	}
 
 	{
+		sort.Slice(s.proteins, func(i, j int) bool {
+			return s.proteins[i].OrganID > s.proteins[j].OrganID
+		})
+		for _, p := range s.proteins {
+			proteinsObs = append(proteinsObs, p.Pos.ToCoordinates())
+		}
 		km := NewKmenas()
-		s.proteinsClusters, _ = km.Partition(proteinsObs, 5)
+		k := len(s.myRoot)
+		if k%2 != 0 {
+			k += 1
+		}
+		s.proteinsClusters, _ = km.Partition(proteinsObs, k)
 	}
 	// {
 	// km := NewKmenas()
@@ -118,8 +128,8 @@ func (s *State) ScanEnties() {
 				s.matrix[p.Y][p.X] = &Entity{
 					Pos:           p,
 					ClusterCenter: true,
-					Type:          FreeTypeEntity,
-					Owner:         -1,
+					// Type:          FreeTypeEntity,
+					Owner: -1,
 				}
 			}
 		}
@@ -164,12 +174,12 @@ func (s *State) ScanReqActions() {
 }
 
 func (s *State) DoAction(g *Game) {
+	organs := s.AvailableOrang()
 	for i := 0; i < s.RequiredActionsCount; i++ {
-		_ = s.GetFreePos()
+		_ = s.GetFreePos(organs)
 		_ = s.GetNearProteins()
 		s.walk(0, 0, s.Dummy)
 	}
-	organs := s.AvailableOrang()
 	for _, e := range s.nextEntity {
 		DebugMsg(">>>", e.ToLog())
 	}
@@ -252,7 +262,7 @@ func (s *State) DoAction(g *Game) {
 					}
 				case DirS:
 					from.Y += 1
-					if from.Y <= to.Y {
+					if from.Y >= to.Y {
 						shift = false
 					}
 					cancelShift = func() {
@@ -336,6 +346,10 @@ func (s *State) DoAction(g *Game) {
 		}
 		if organs.HasHarvester() {
 			fmt.Println(e.GrowHarvester(e.OrganDir))
+			continue
+		}
+		if organs.HasSporer() {
+			fmt.Println(e.GrowSporer(e.OrganDir))
 			continue
 		}
 		fmt.Println("WAIT") // Write action to stdout
@@ -425,7 +439,7 @@ func (s *State) GetNearProteins() []*Entity {
 	return s.nearProteins
 }
 
-func (s *State) GetFreePos() []*Entity {
+func (s *State) GetFreePos(organs Organs) []*Entity {
 	s.freePos = make([]*Entity, 0)
 	do := func(e *Entity, useProtein bool) {
 		if e == nil {
@@ -461,17 +475,24 @@ func (s *State) GetFreePos() []*Entity {
 				continue
 			}
 			// хуже работает
-			if newPos != nil && newPos.IsProtein() {
+			if newPos != nil && newPos.IsProtein() && !organs.HasHarvester() {
 				if s.MyStock.NeedCollectProtein(newPos.Type) {
 					newPos = &Entity{Pos: pos}
 					newPos.OrganID = e.OrganID
 					newPos.OrganParentID = e.OrganParentID
 					newPos.OrganRootID = e.OrganRootID
+					newPos.CanSpaces = true
 					s.freePos = append(s.freePos, newPos)
 				}
 			}
-
-			if newPos == nil || (useProtein && newPos.IsProtein()) {
+			if newPos != nil && newPos.IsProtein() {
+				s.ArroundMy(newPos)
+				newPos = &Entity{Pos: pos}
+				newPos.OrganID = e.OrganID
+				newPos.OrganParentID = e.OrganParentID
+				newPos.OrganRootID = e.OrganRootID
+				s.freePos = append(s.freePos, newPos)
+			} else if newPos == nil || (useProtein && newPos.IsProtein()) {
 				newPos = &Entity{Pos: pos}
 				newPos.OrganID = e.OrganID
 				newPos.OrganParentID = e.OrganParentID
@@ -598,62 +619,6 @@ func (s *State) AroundOpponet(e *Entity) bool {
 	return true
 }
 
-func (s *State) GetTentacleDir(e *Entity) string {
-	if e == nil {
-		return ""
-	}
-	up := s.getByPos(e.Pos.Up())
-	if up != nil && up.IsOpponent() {
-		return DirN
-	}
-	down := s.getByPos(e.Pos.Down())
-	if down != nil && down.IsOpponent() {
-		return DirS
-	}
-	left := s.getByPos(e.Pos.Left())
-	if left != nil && left.IsOpponent() {
-		return DirW
-	}
-	right := s.getByPos(e.Pos.Right())
-	if right != nil && right.IsOpponent() {
-		return DirE
-	}
-	up = s.getByPos(e.Pos.Up())
-	if up == nil {
-		return DirN
-	}
-	down = s.getByPos(e.Pos.Down())
-	if down == nil {
-		return DirS
-	}
-	left = s.getByPos(e.Pos.Left())
-	if left == nil {
-		return DirW
-	}
-	right = s.getByPos(e.Pos.Right())
-	if right == nil {
-		return DirE
-	}
-	up = s.getByPos(e.Pos.Up())
-	if up != nil && up.IsFree() {
-		return DirN
-	}
-	down = s.getByPos(e.Pos.Down())
-	if down != nil && down.IsFree() {
-		return DirS
-	}
-	left = s.getByPos(e.Pos.Left())
-	if left != nil && left.IsFree() {
-		return DirW
-	}
-	right = s.getByPos(e.Pos.Right())
-	if right != nil && right.IsFree() {
-		return DirE
-	}
-
-	return ""
-}
-
 func (s *State) GetTentacleDir2(e *Entity) string {
 	if e == nil {
 		return ""
@@ -668,6 +633,22 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 			degree := PointToAngle(e.Pos, dir)
 			return AngleToDir(degree)
 		}
+	}
+	result := make([]Entity, 0)
+	for _, opp := range s.oppEntities {
+		if s.FreeOppEntites(opp) {
+			distance := e.Pos.Distance(opp.Pos)
+			newOpp := *opp
+			newOpp.NextDistance = distance
+			result = append(result, newOpp)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].NextDistance < result[j].NextDistance
+	})
+	if len(result) > 0 {
+		degree := PointToAngle(e.Pos, result[0].Pos)
+		return AngleToDir(degree)
 	}
 	return DirN
 }
@@ -711,6 +692,33 @@ func (s *State) FreeEntites(e *Entity) bool {
 		}
 	}
 	return len(full) > 0
+}
+
+func (s *State) ArroundMy(e *Entity) bool {
+	if e == nil {
+		return false
+	}
+
+	dirs := e.Pos.GetRoseLocality()
+	oneMy := []struct{}{}
+	full := []struct{}{}
+	total := 0
+	for _, pos := range dirs {
+		if !s.InMatrix(pos) {
+			continue
+		}
+		total += 1
+		e := s.getByPos(pos)
+		if e != nil {
+			if e.IsMy() && !e.IsHarvester() {
+				oneMy = append(oneMy, struct{}{})
+			}
+			if e.IsWall() {
+				full = append(full, struct{}{})
+			}
+		}
+	}
+	return len(full)+len(oneMy) == total && len(oneMy) >= 1
 }
 
 func (s *State) FreeOppEntites(e *Entity) bool {

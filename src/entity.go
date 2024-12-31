@@ -17,6 +17,7 @@ type Entity struct {
 	CanAttack     bool
 	ClusterCenter bool
 	SporeTo       Position
+	CanSpaces     bool
 }
 
 func (e *Entity) Scan() {

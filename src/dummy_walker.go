@@ -1,6 +1,9 @@
 package main
 
-import "math"
+import (
+	"math"
+	"sort"
+)
 
 func (s *State) Dummy(e *Entity) bool {
 
@@ -38,7 +41,7 @@ func (s *State) Dummy(e *Entity) bool {
 				}
 				newDistance := free.Pos.Distance(opp.Pos)
 				if math.Abs(newDistance) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && newDistance >= 0) {
-					free.NextDistance = math.Abs(newDistance)
+					free.NextDistance += math.Abs(newDistance)
 					free.CanAttack = true
 					s.freePos[i] = free
 				}
@@ -80,13 +83,20 @@ func (s *State) Dummy(e *Entity) bool {
 		}
 	}
 
+	sort.Slice(s.freePos, func(i, j int) bool {
+		return s.freePos[i].NextDistance > s.freePos[j].NextDistance
+	})
 	min := s.freePos[0]
 	for _, free := range s.freePos {
 		if _, ok := s.nextHash[free.ID()]; ok {
 			continue
 		}
+
+		if free.Type == "" {
+			free.Type = FreeTypeEntity
+		}
 		s.matrix[free.Pos.Y][free.Pos.X] = &Entity{
-			Type:         FreeTypeEntity,
+			Type:         free.Type,
 			Pos:          free.Pos,
 			NextDistance: free.NextDistance,
 			Owner:        -1,
