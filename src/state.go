@@ -129,6 +129,25 @@ func (s *State) ScanEnties() {
 	// markCoordinates(s.myClusters)
 }
 
+func (s *State) GetOrderedProtens() []*Entity {
+	hashProteins := make(map[string][]*Entity, 0)
+	for _, p := range s.proteins {
+		if _, ok := hashProteins[p.Type]; !ok {
+			hashProteins[p.Type] = []*Entity{p}
+			continue
+		}
+		hashProteins[p.Type] = append(hashProteins[p.Type], p)
+	}
+	result := make([]*Entity, 0)
+	order := s.MyStock.GetOrderByCountAsc()
+
+	for _, o := range order {
+		result = append(result, hashProteins[o]...)
+	}
+
+	return result
+}
+
 func (s *State) ScanStocks() {
 	s.MyStock = NewStock()
 	s.OpponentStock = NewStock()
@@ -264,14 +283,14 @@ func (s *State) DoAction(g *Game) {
 		}
 		if e.CanAttack {
 			if organs.HasTentacle() {
-				fmt.Println(e.GrowTentacle(s.GetTentacleDir(e)))
+				fmt.Println(e.GrowTentacle(s.GetTentacleDir2(e)))
 				continue
 			}
 		}
 
 		if s.MyStock.CanAttack() {
 			if organs.HasTentacle() {
-				fmt.Println(e.GrowTentacle(s.GetTentacleDir(e)))
+				fmt.Println(e.GrowTentacle(s.GetTentacleDir2(e)))
 				continue
 			}
 		}
@@ -282,7 +301,7 @@ func (s *State) DoAction(g *Game) {
 				continue
 			}
 		}
-		if len(s.mySporer) == 0 || len(s.myRoot) >= len(s.mySporer) {
+		if len(s.mySporer) == 0 || len(s.myRoot) == len(s.mySporer) {
 			if organs.HasSporer() && organs.HasRoot() && s.MyStock.D >= 2 {
 				clusterID := s.proteinsClusters.Nearest(e.Pos.ToCoordinates())
 				if len(s.proteinsClusters) > 0 {
@@ -312,7 +331,11 @@ func (s *State) DoAction(g *Game) {
 		}
 
 		if organs.HasTentacle() {
-			fmt.Println(e.GrowTentacle(s.GetTentacleDir(e)))
+			fmt.Println(e.GrowTentacle(s.GetTentacleDir2(e)))
+			continue
+		}
+		if organs.HasHarvester() {
+			fmt.Println(e.GrowHarvester(e.OrganDir))
 			continue
 		}
 		fmt.Println("WAIT") // Write action to stdout
@@ -437,7 +460,8 @@ func (s *State) GetFreePos() []*Entity {
 			if underAttack {
 				continue
 			}
-			if newPos == nil && newPos.IsProtein() {
+			// хуже работает
+			if newPos != nil && newPos.IsProtein() {
 				if s.MyStock.NeedCollectProtein(newPos.Type) {
 					newPos = &Entity{Pos: pos}
 					newPos.OrganID = e.OrganID
@@ -630,22 +654,30 @@ func (s *State) GetTentacleDir(e *Entity) string {
 	return ""
 }
 
+func (s *State) GetTentacleDir2(e *Entity) string {
+	if e == nil {
+		return ""
+	}
+	dirs := e.Pos.GetLocality()
+	for _, dir := range dirs {
+		if !s.InMatrix(dir) {
+			continue
+		}
+		pos := s.getByPos(dir)
+		if pos != nil && pos.IsOpponent() {
+			degree := PointToAngle(e.Pos, dir)
+			return AngleToDir(degree)
+		}
+	}
+	return DirN
+}
+
 func (s *State) GetSporerDir(from *Entity, to Position) string {
 	if from == nil {
 		return ""
 	}
 	degree := PointToAngle(from.Pos, to)
-	if -45 <= degree && degree <= 45 {
-		return DirS
-	}
-	if 45 <= degree && degree <= 135 {
-		return DirE
-	}
-	if -135 <= degree && degree <= -45 {
-		return DirW
-	}
-
-	return DirN
+	return AngleToDir(degree)
 }
 
 func (s *State) first() *Entity {

@@ -20,3 +20,18 @@ func PointToAngle(from, to Position) int {
 	DebugMsg("angle", res, res*180/math.Pi)
 	return int(math.Round(degree))
 }
+
+func AngleToDir(degree int) string {
+
+	if -45 <= degree && degree <= 45 {
+		return DirS
+	}
+	if 45 <= degree && degree <= 135 {
+		return DirE
+	}
+	if -135 <= degree && degree <= -45 {
+		return DirW
+	}
+
+	return DirN
+}

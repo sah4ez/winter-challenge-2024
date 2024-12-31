@@ -5,6 +5,9 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"sort"
+	"strings"
+	"testing"
 	"time"
 	// "testing"
 )
@@ -193,7 +196,7 @@ func (s *State) Dummy(e *Entity) bool {
 				s.scanOppoent[opp.ID()] = opp
 			}
 		} else {
-			for _, protein := range s.proteins {
+			for _, protein := range s.GetOrderedProtens() {
 				if _, ok := s.eatProtein[protein.ID()]; ok {
 					continue
 				}
@@ -905,6 +908,25 @@ func (s *State) ScanEnties() {
 	// markCoordinates(s.myClusters)
 }
 
+func (s *State) GetOrderedProtens() []*Entity {
+	hashProteins := make(map[string][]*Entity, 0)
+	for _, p := range s.proteins {
+		if _, ok := hashProteins[p.Type]; !ok {
+			hashProteins[p.Type] = []*Entity{p}
+			continue
+		}
+		hashProteins[p.Type] = append(hashProteins[p.Type], p)
+	}
+	result := make([]*Entity, 0)
+	order := s.MyStock.GetOrderByCountAsc()
+
+	for _, o := range order {
+		result = append(result, hashProteins[o]...)
+	}
+
+	return result
+}
+
 func (s *State) ScanStocks() {
 	s.MyStock = NewStock()
 	s.OpponentStock = NewStock()
@@ -1040,14 +1062,14 @@ func (s *State) DoAction(g *Game) {
 		}
 		if e.CanAttack {
 			if organs.HasTentacle() {
-				fmt.Println(e.GrowTentacle(s.GetTentacleDir(e)))
+				fmt.Println(e.GrowTentacle(s.GetTentacleDir2(e)))
 				continue
 			}
 		}
 
 		if s.MyStock.CanAttack() {
 			if organs.HasTentacle() {
-				fmt.Println(e.GrowTentacle(s.GetTentacleDir(e)))
+				fmt.Println(e.GrowTentacle(s.GetTentacleDir2(e)))
 				continue
 			}
 		}
@@ -1058,7 +1080,7 @@ func (s *State) DoAction(g *Game) {
 				continue
 			}
 		}
-		if len(s.mySporer) == 0 || len(s.myRoot) >= len(s.mySporer) {
+		if len(s.mySporer) == 0 || len(s.myRoot) == len(s.mySporer) {
 			if organs.HasSporer() && organs.HasRoot() && s.MyStock.D >= 2 {
 				clusterID := s.proteinsClusters.Nearest(e.Pos.ToCoordinates())
 				if len(s.proteinsClusters) > 0 {
@@ -1088,7 +1110,11 @@ func (s *State) DoAction(g *Game) {
 		}
 
 		if organs.HasTentacle() {
-			fmt.Println(e.GrowTentacle(s.GetTentacleDir(e)))
+			fmt.Println(e.GrowTentacle(s.GetTentacleDir2(e)))
+			continue
+		}
+		if organs.HasHarvester() {
+			fmt.Println(e.GrowHarvester(e.OrganDir))
 			continue
 		}
 		fmt.Println("WAIT") // Write action to stdout
@@ -1213,7 +1239,8 @@ func (s *State) GetFreePos() []*Entity {
 			if underAttack {
 				continue
 			}
-			if newPos == nil && newPos.IsProtein() {
+			// хуже работает
+			if newPos != nil && newPos.IsProtein() {
 				if s.MyStock.NeedCollectProtein(newPos.Type) {
 					newPos = &Entity{Pos: pos}
 					newPos.OrganID = e.OrganID
@@ -1406,22 +1433,30 @@ func (s *State) GetTentacleDir(e *Entity) string {
 	return ""
 }
 
+func (s *State) GetTentacleDir2(e *Entity) string {
+	if e == nil {
+		return ""
+	}
+	dirs := e.Pos.GetLocality()
+	for _, dir := range dirs {
+		if !s.InMatrix(dir) {
+			continue
+		}
+		pos := s.getByPos(dir)
+		if pos != nil && pos.IsOpponent() {
+			degree := PointToAngle(e.Pos, dir)
+			return AngleToDir(degree)
+		}
+	}
+	return DirN
+}
+
 func (s *State) GetSporerDir(from *Entity, to Position) string {
 	if from == nil {
 		return ""
 	}
 	degree := PointToAngle(from.Pos, to)
-	if -45 <= degree && degree <= 45 {
-		return DirS
-	}
-	if 45 <= degree && degree <= 135 {
-		return DirE
-	}
-	if -135 <= degree && degree <= -45 {
-		return DirW
-	}
-
-	return DirN
+	return AngleToDir(degree)
 }
 
 func (s *State) first() *Entity {
@@ -1524,6 +1559,11 @@ type Stock struct {
 	DPerStep int
 }
 
+type SigleProtein struct {
+	Type  string
+	Count int
+}
+
 func (s *Stock) Scan() {
 	fmt.Scan(&s.A, &s.B, &s.C, &s.D)
 	total := float64(s.A + s.B + s.C + s.D)
@@ -1587,6 +1627,24 @@ func (s *Stock) NeedCollectProtein(protein string) bool {
 	return false
 }
 
+func (s *Stock) GetOrderByCountAsc() []string {
+	proteins := []SigleProtein{
+		{Type: AProteinTypeEntity, Count: s.A},
+		{Type: BProteinTypeEntity, Count: s.B},
+		{Type: CProteinTypeEntity, Count: s.C},
+		{Type: DProteinTypeEntity, Count: s.D},
+	}
+
+	sort.Slice(proteins, func(i, j int) bool {
+		return proteins[i].Count < proteins[j].Count
+	})
+	result := make([]string, 0)
+	for _, pp := range proteins {
+		result = append(result, pp.Type)
+	}
+	return result
+}
+
 func (s *Stock) StockProduction() string {
 	return fmt.Sprintf("A:%d B:%d C:%d D:%d", s.APerStep, s.BPerStep, s.CPerStep, s.DPerStep)
 }
@@ -1599,6 +1657,46 @@ func NewStock() *Stock {
 	s := &Stock{}
 	s.Scan()
 	return s
+}
+
+func TestGetOrderByCount(t *testing.T) {
+	testCases := []struct {
+		name  string
+		stock Stock
+		exp   string
+	}{
+		{
+			name: "dcba",
+			stock: Stock{
+				A: 10,
+				B: 8,
+				C: 4,
+				D: 2,
+			},
+			exp: "DCBA",
+		},
+		{
+			name: "abcd",
+			stock: Stock{
+				A: 2,
+				B: 4,
+				C: 8,
+				D: 10,
+			},
+			exp: "ABCD",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			actArr := tc.stock.GetOrderByCountAsc()
+			act := strings.Join(actArr, "")
+			if act != tc.exp {
+				t.Error("not equal", act, tc.exp)
+			}
+		})
+	}
+
 }
 
 func DebugMsg(msg ...any) {
@@ -1614,6 +1712,21 @@ func PointToAngle(from, to Position) int {
 
 	DebugMsg("angle", res, res*180/math.Pi)
 	return int(math.Round(degree))
+}
+
+func AngleToDir(degree int) string {
+
+	if -45 <= degree && degree <= 45 {
+		return DirS
+	}
+	if 45 <= degree && degree <= 135 {
+		return DirE
+	}
+	if -135 <= degree && degree <= -45 {
+		return DirW
+	}
+
+	return DirN
 }
 
 //)

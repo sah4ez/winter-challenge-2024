@@ -45,7 +45,7 @@ func (s *State) Dummy(e *Entity) bool {
 				s.scanOppoent[opp.ID()] = opp
 			}
 		} else {
-			for _, protein := range s.proteins {
+			for _, protein := range s.GetOrderedProtens() {
 				if _, ok := s.eatProtein[protein.ID()]; ok {
 					continue
 				}

@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 type Stock struct {
 	A        int
@@ -19,6 +22,11 @@ type Stock struct {
 	BPerStep int
 	CPerStep int
 	DPerStep int
+}
+
+type SigleProtein struct {
+	Type  string
+	Count int
 }
 
 func (s *Stock) Scan() {
@@ -82,6 +90,24 @@ func (s *Stock) NeedCollectProtein(protein string) bool {
 		return s.DPerStep == 0 && s.D == 0
 	}
 	return false
+}
+
+func (s *Stock) GetOrderByCountAsc() []string {
+	proteins := []SigleProtein{
+		{Type: AProteinTypeEntity, Count: s.A},
+		{Type: BProteinTypeEntity, Count: s.B},
+		{Type: CProteinTypeEntity, Count: s.C},
+		{Type: DProteinTypeEntity, Count: s.D},
+	}
+
+	sort.Slice(proteins, func(i, j int) bool {
+		return proteins[i].Count < proteins[j].Count
+	})
+	result := make([]string, 0)
+	for _, pp := range proteins {
+		result = append(result, pp.Type)
+	}
+	return result
 }
 
 func (s *Stock) StockProduction() string {
