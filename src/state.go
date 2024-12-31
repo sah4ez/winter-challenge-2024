@@ -485,8 +485,7 @@ func (s *State) GetFreePos(organs Organs) []*Entity {
 					s.freePos = append(s.freePos, newPos)
 				}
 			}
-			if newPos != nil && newPos.IsProtein() {
-				s.ArroundMy(newPos)
+			if newPos != nil && newPos.IsProtein() && s.ArroundMy(newPos) {
 				newPos = &Entity{Pos: pos}
 				newPos.OrganID = e.OrganID
 				newPos.OrganParentID = e.OrganParentID

@@ -1134,6 +1134,10 @@ func (s *State) DoAction(g *Game) {
 			fmt.Println(e.GrowHarvester(e.OrganDir))
 			continue
 		}
+		if organs.HasSporer() {
+			fmt.Println(e.GrowSporer(e.OrganDir))
+			continue
+		}
 		fmt.Println("WAIT") // Write action to stdout
 	}
 }
@@ -1257,18 +1261,17 @@ func (s *State) GetFreePos(organs Organs) []*Entity {
 				continue
 			}
 			// хуже работает
-			if newPos != nil && newPos.IsProtein() && !organs.HasHarvester() {
-				if s.MyStock.NeedCollectProtein(newPos.Type) {
-					newPos = &Entity{Pos: pos}
-					newPos.OrganID = e.OrganID
-					newPos.OrganParentID = e.OrganParentID
-					newPos.OrganRootID = e.OrganRootID
-					newPos.CanSpaces = true
-					s.freePos = append(s.freePos, newPos)
-				}
-			}
-			if newPos != nil && newPos.IsProtein() {
-				s.ArroundMy(newPos)
+			//if newPos != nil && newPos.IsProtein() && !organs.HasHarvester() {
+			//	if s.MyStock.NeedCollectProtein(newPos.Type) {
+			//		newPos = &Entity{Pos: pos}
+			//		newPos.OrganID = e.OrganID
+			//		newPos.OrganParentID = e.OrganParentID
+			//		newPos.OrganRootID = e.OrganRootID
+			//		newPos.CanSpaces = true
+			//		s.freePos = append(s.freePos, newPos)
+			//	}
+			//}
+			if newPos != nil && newPos.IsProtein() && s.ArroundMy(newPos) {
 				newPos = &Entity{Pos: pos}
 				newPos.OrganID = e.OrganID
 				newPos.OrganParentID = e.OrganParentID
