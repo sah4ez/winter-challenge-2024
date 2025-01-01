@@ -10,6 +10,10 @@ type Position struct {
 	Y int
 }
 
+func (p Position) ID() string {
+	return fmt.Sprintf("(%d:%d)", p.X, p.Y)
+}
+
 func (p Position) Equal(pos Position) bool {
 	return p.X == pos.X && p.Y == pos.Y
 }

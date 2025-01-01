@@ -161,7 +161,13 @@ func (s *State) Dummy(e *Entity) bool {
 
 	needAttack := false
 	for _, attackOverProtein := range s.nearProteins {
+		if s.MyStock.NeedCollectProtein(attackOverProtein.Type) {
+			DebugMsg("need collect near protein -> ", attackOverProtein.ToLog())
+		}
 		if s.MyStock.GetPercent(attackOverProtein.Type) < 0.4 {
+			continue
+		}
+		if s.underAttack(attackOverProtein.Pos) {
 			continue
 		}
 
@@ -170,7 +176,7 @@ func (s *State) Dummy(e *Entity) bool {
 		if _, ok := s.nextHash[attackOverProtein.ID()]; !ok {
 			s.nextHash[attackOverProtein.ID()] = attackOverProtein
 			s.nextEntity = append(s.nextEntity, attackOverProtein)
-			// DebugMsg("protein attack -> ", attackOverProtein.ToLog())
+			DebugMsg("protein attack -> ", attackOverProtein.ToLog())
 			needAttack = true
 		}
 	}
@@ -238,6 +244,9 @@ func (s *State) Dummy(e *Entity) bool {
 	for _, free := range s.freePos {
 		if _, ok := s.nextHash[free.ID()]; ok {
 			continue
+		}
+		if free.IsProtein() && s.MyStock.NeedCollectProtein(free.Type) {
+			free.NextDistance = 0.0
 		}
 
 		if free.Type == "" {
@@ -388,6 +397,22 @@ func (e *Entity) ID() string {
 }
 
 func (e *Entity) TentacleAttackPosition() Position {
+	if e.OrganDir == DirW {
+		return Position{X: e.Pos.X - 1, Y: e.Pos.Y}
+	}
+	if e.OrganDir == DirE {
+		return Position{X: e.Pos.X + 1, Y: e.Pos.Y}
+	}
+	if e.OrganDir == DirN {
+		return Position{X: e.Pos.X, Y: e.Pos.Y - 1}
+	}
+	if e.OrganDir == DirS {
+		return Position{X: e.Pos.X, Y: e.Pos.Y + 1}
+	}
+	return e.Pos
+}
+
+func (e *Entity) SporerFirstCellPosition() Position {
 	if e.OrganDir == DirW {
 		return Position{X: e.Pos.X - 1, Y: e.Pos.Y}
 	}
@@ -584,8 +609,8 @@ func main() {
 		state.ScanReqActions()
 
 		state.DoAction(game)
-		full := false
-		state.Debug(full)
+		// full := false
+		// state.Debug(full)
 		// DebugMsg("step: ", step)
 		// step += 1
 	}
@@ -721,6 +746,10 @@ func (o Organs) HasHarvester() bool {
 type Position struct {
 	X int
 	Y int
+}
+
+func (p Position) ID() string {
+	return fmt.Sprintf("(%d:%d)", p.X, p.Y)
 }
 
 func (p Position) Equal(pos Position) bool {
@@ -936,9 +965,16 @@ func (s *State) GetOrderedProtens() []*Entity {
 	}
 	result := make([]*Entity, 0)
 	order := s.MyStock.GetOrderByCountAsc()
+	for k := range hashProteins {
+		if s.MyStock.GetProduction(k) >= len(s.myRoot) {
+			delete(hashProteins, k)
+		}
+	}
 
 	for _, o := range order {
-		result = append(result, hashProteins[o]...)
+		if _, ok := hashProteins[o]; ok {
+			result = append(result, hashProteins[o]...)
+		}
 	}
 
 	return result
@@ -970,7 +1006,7 @@ func (s *State) DoAction(g *Game) {
 		DebugMsg(">>>", e.ToLog())
 	}
 	DebugMsg("organs: ", organs, len(s.nextEntity))
-	DebugMsg("proteins: ", s.MyStock)
+	DebugMsg("proteins: ", s.MyStock, s.MyStock.GetOrderByCountAsc())
 	if len(s.nextEntity) == 0 {
 		for i := 0; i < s.RequiredActionsCount; i++ {
 			fmt.Println("WAIT") // Write action to stdout
@@ -1013,68 +1049,70 @@ func (s *State) DoAction(g *Game) {
 			g.StopSporer()
 			// DebugMsg("sporer stop", from.ToLog(), "->", to.ToLog())
 			sporer := s.getByPos(from)
-			dir := sporer.OrganDir
-			shift := true
-			var cancelShift func()
-			total := 0
-			for shift {
-				if total == 8 {
-					break
-				}
-				switch dir {
-				case DirE:
-					from.X += 1
-					if from.X >= to.X {
-						shift = false
+			if sporer != nil {
+				dir := sporer.OrganDir
+				shift := true
+				var cancelShift func()
+				total := 0
+				for shift {
+					if total == 8 {
+						break
 					}
-					cancelShift = func() {
-						from.X -= 1
-					}
-				case DirW:
-					from.X -= 1
-					if from.X <= to.X {
-						shift = false
-					}
-					cancelShift = func() {
+					switch dir {
+					case DirE:
 						from.X += 1
-					}
-				case DirN:
-					from.Y -= 1
-					if from.Y <= to.Y {
-						shift = false
-					}
-					cancelShift = func() {
-						from.Y += 1
-					}
-				case DirS:
-					from.Y += 1
-					if from.Y >= to.Y {
-						shift = false
-					}
-					cancelShift = func() {
+						if from.X >= to.X {
+							shift = false
+						}
+						cancelShift = func() {
+							from.X -= 1
+						}
+					case DirW:
+						from.X -= 1
+						if from.X <= to.X {
+							shift = false
+						}
+						cancelShift = func() {
+							from.X += 1
+						}
+					case DirN:
 						from.Y -= 1
+						if from.Y <= to.Y {
+							shift = false
+						}
+						cancelShift = func() {
+							from.Y += 1
+						}
+					case DirS:
+						from.Y += 1
+						if from.Y >= to.Y {
+							shift = false
+						}
+						cancelShift = func() {
+							from.Y -= 1
+						}
 					}
+					total += 1
 				}
-				total += 1
-			}
-			// DebugMsg("sporer condition:", from.ToLog())
-			pos := s.getByPos(from)
-			if pos == nil {
-				sporer.SporeTo = from
-				fmt.Println(sporer.Spore())
-				continue
-			}
-			// DebugMsg("sporer condition:", from.ToLog(), pos.ToLog())
-			if pos.IsEmpty() || pos.IsFree() {
-				sporer.SporeTo = from
-				fmt.Println(sporer.Spore())
-				continue
-			}
-			if pos.IsWall() && cancelShift != nil {
-				cancelShift()
-				sporer.SporeTo = from
-				fmt.Println(sporer.Spore())
-				continue
+				// DebugMsg("sporer condition:", from.ToLog())
+				pos := s.getByPos(from)
+				if pos == nil {
+					sporer.SporeTo = from
+					fmt.Println(sporer.Spore())
+					continue
+				}
+				// DebugMsg("sporer condition:", from.ToLog(), pos.ToLog())
+				if pos.IsEmpty() || pos.IsFree() {
+					sporer.SporeTo = from
+					fmt.Println(sporer.Spore())
+					continue
+				}
+				if pos.IsWall() && cancelShift != nil {
+					cancelShift()
+					sporer.SporeTo = from
+					fmt.Println(sporer.Spore())
+					continue
+				}
 			}
 		}
 		if e.CanAttack {
@@ -1104,10 +1142,17 @@ func (s *State) DoAction(g *Game) {
 					cluster := s.proteinsClusters[clusterID]
 					clusterCenter := FromCoordinates(cluster.Center.Coordinates())
 					centerEntites := s.getByPos(clusterCenter)
-					if !centerEntites.IsMy() && !centerEntites.IsOpponent() {
+					dir := s.GetSporerDir(e, clusterCenter)
+					fakeSporer := &Entity{Pos: e.Pos, OrganDir: dir}
+					placeBeforeSporer := fakeSporer.SporerFirstCellPosition()
+					ee := s.getByPos(placeBeforeSporer)
+					if s.InMatrix(placeBeforeSporer) &&
+						!centerEntites.IsMy() &&
+						!centerEntites.IsOpponent() &&
+						(ee == nil || ee.IsFree() || ee.IsEmpty()) {
 						g.StartSporer(e.Pos, clusterCenter)
 						DebugMsg("sporer start:", e.ToLog(), "cluster center", clusterCenter.ToLog())
-						fmt.Println(e.GrowSporer(s.GetSporerDir(e, clusterCenter)))
+						fmt.Println(e.GrowSporer(dir))
 						continue
 					} else {
 						DebugMsg("not free", e.ToLog(), "cluster center", clusterCenter.ToLog())
@@ -1115,6 +1160,17 @@ func (s *State) DoAction(g *Game) {
 				}
 			}
 		}
+		// как-то криво работает, упал на 20 позиций
+		//if s.canStartAttack(e.Pos) && organsattack.HasTentacle() {
+		//	newE := *e
+		//	newE.OrganDir = s.GetTentacleDir2(e)
+		//	pos := e.TentacleAttackPosition()
+		//	attackPos := s.getByPos(pos)
+		//	if !attackPos.IsMy() {
+		//		fmt.Println(e.GrowTentacle(newE.OrganDir))
+		//		continue
+		//	}
+		//}
 		if organs.HasBasic() {
 			fmt.Println(e.GrowBasic())
 			continue
@@ -1197,7 +1253,7 @@ func (s *State) GetNearProteins() []*Entity {
 
 		dirs := e.Pos.GetRoseLocality()
 		for _, pos := range dirs {
-			if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+			if !s.InMatrix(pos) {
 				continue
 			}
 			newPos := s.getByPos(pos)
@@ -1225,7 +1281,56 @@ func (s *State) GetNearProteins() []*Entity {
 	return s.nearProteins
 }
 
+func (s *State) underAttack(pos Position) bool {
+	newPos := &Entity{Pos: pos, Type: AttackTypeEntity}
+	newDirs := newPos.Pos.GetLocality()
+	for _, nd := range newDirs {
+		if !s.InMatrix(nd) {
+			continue
+		}
+		e := s.getByPos(nd)
+		if e != nil && e.IsOpponent() && e.IsTentacle() {
+			posAttack := e.TentacleAttackPosition()
+			if posAttack.Equal(newPos.Pos) {
+				// DebugMsg("attack ->", newPos.ToLog())
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (s *State) canStartAttack(pos Position) bool {
+	newPos := &Entity{Pos: pos, Type: AttackTypeEntity}
+	newDirs := newPos.Pos.GetLocality()
+	posHash := make(map[string]Position, 0)
+	for _, nd := range newDirs {
+		if !s.InMatrix(nd) {
+			continue
+		}
+		for _, nnd := range nd.GetLocality() {
+			if !s.InMatrix(nnd) {
+				continue
+			}
+			if _, ok := posHash[nnd.ID()]; ok {
+				continue
+			}
+			posHash[nd.ID()] = nnd
+
+			e := s.getByPos(nnd)
+			if e != nil {
+				DebugMsg("start attack 2nd ->", pos.ToLog(), nnd.ToLog(), e.ToLog())
+			}
+			if e != nil && e.IsOpponent() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (s *State) GetFreePos(organs Organs) []*Entity {
+	hash := make(map[string]*Entity, 0)
 	s.freePos = make([]*Entity, 0)
 	do := func(e *Entity, useProtein bool) {
 		if e == nil {
@@ -1233,56 +1338,52 @@ func (s *State) GetFreePos(organs Organs) []*Entity {
 		}
 		dirs := e.Pos.GetRoseLocality()
 		for _, pos := range dirs {
-			if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+			if !s.InMatrix(pos) {
 				continue
 			}
 			newPos := s.getByPos(pos)
 
-			underAttack := false
-			{
-				newPos := &Entity{Pos: pos, Type: AttackTypeEntity}
-				newDirs := newPos.Pos.GetLocality()
-				for _, nd := range newDirs {
-					if nd.X < 0 || nd.Y < 0 || nd.Y >= s.w || nd.X >= s.h {
-						continue
-					}
-					e := s.getByPos(nd)
-					if e != nil && e.IsOpponent() && e.IsTentacle() {
-						posAttack := e.TentacleAttackPosition()
-						if posAttack.Equal(newPos.Pos) {
-							// DebugMsg("attack ->", newPos.ToLog())
-							underAttack = true
-						}
-					}
-				}
-			}
+			underAttack := s.underAttack(pos)
 
 			if underAttack {
 				continue
 			}
 			// хуже работает
 			if newPos != nil && newPos.IsProtein() && !organs.HasHarvester() {
+				typeProtein := newPos.Type
 				if s.MyStock.NeedCollectProtein(newPos.Type) {
 					newPos = &Entity{Pos: pos}
+					newPos.Type = typeProtein
 					newPos.OrganID = e.OrganID
 					newPos.OrganParentID = e.OrganParentID
 					newPos.OrganRootID = e.OrganRootID
 					newPos.CanSpaces = true
+					if _, ok := hash[newPos.ID()]; !ok {
+						s.freePos = append(s.freePos, newPos)
+						hash[newPos.ID()] = newPos
+					}
+				}
+			} else if newPos != nil && newPos.IsProtein() && s.ArroundMy(newPos) {
+				// typeProtein := newPos.Type
+				newPos = &Entity{Pos: pos}
+				newPos.OrganID = e.OrganID
+				// newPos.Type = typeProtein
+				newPos.OrganParentID = e.OrganParentID
+				newPos.OrganRootID = e.OrganRootID
+				if _, ok := hash[newPos.ID()]; !ok {
 					s.freePos = append(s.freePos, newPos)
+					hash[newPos.ID()] = newPos
 				}
 			}
-			if newPos != nil && newPos.IsProtein() && s.ArroundMy(newPos) {
+			if newPos == nil || (useProtein && newPos.IsProtein()) {
 				newPos = &Entity{Pos: pos}
 				newPos.OrganID = e.OrganID
 				newPos.OrganParentID = e.OrganParentID
 				newPos.OrganRootID = e.OrganRootID
-				s.freePos = append(s.freePos, newPos)
-			} else if newPos == nil || (useProtein && newPos.IsProtein()) {
-				newPos = &Entity{Pos: pos}
-				newPos.OrganID = e.OrganID
-				newPos.OrganParentID = e.OrganParentID
-				newPos.OrganRootID = e.OrganRootID
-				s.freePos = append(s.freePos, newPos)
+				if _, ok := hash[newPos.ID()]; !ok {
+					s.freePos = append(s.freePos, newPos)
+					hash[newPos.ID()] = newPos
+				}
 			}
 		}
 	}
@@ -1416,7 +1517,26 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 		pos := s.getByPos(dir)
 		if pos != nil && pos.IsOpponent() {
 			degree := PointToAngle(e.Pos, dir)
-			return AngleToDir(degree)
+			dir := ""
+			total := 4
+			for total >= 0 && dir == "" {
+				dir = AngleToDir(degree)
+				tentacle := *e
+				tentacle.OrganDir = dir
+				attackPosition := tentacle.TentacleAttackPosition()
+				total -= 1
+				if !s.InMatrix(attackPosition) {
+					degree += 90
+					dir = ""
+					continue
+				}
+				if attackEntity := s.getByPos(attackPosition); attackEntity != nil && attackEntity.IsWall() {
+					degree += 90
+					dir = ""
+					continue
+				}
+				return dir
+			}
 		}
 	}
 	result := make([]Entity, 0)
@@ -1433,7 +1553,28 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 	})
 	if len(result) > 0 {
 		degree := PointToAngle(e.Pos, result[0].Pos)
-		return AngleToDir(degree)
+		dir := ""
+		total := 4
+		for total >= 0 && dir == "" {
+			DebugMsg(">>", total, dir)
+			dir = AngleToDir(degree)
+			tentacle := *e
+			tentacle.OrganDir = dir
+			attackPosition := tentacle.TentacleAttackPosition()
+			total -= 1
+			if !s.InMatrix(attackPosition) {
+				degree += 90
+				dir = ""
+				continue
+			}
+			if attackEntity := s.getByPos(attackPosition); attackEntity != nil && attackEntity.IsWall() {
+				degree += 90
+				dir = ""
+				continue
+			}
+			return dir
+		}
+		return DirN
 	}
 	return DirN
 }
@@ -1603,6 +1744,22 @@ func (s *Stock) GetPercent(protein string) float64 {
 		return s.PercentD
 	}
 	return 0.0
+}
+
+func (s *Stock) GetProduction(protein string) int {
+	if protein == AProteinTypeEntity {
+		return s.APerStep
+	}
+	if protein == BProteinTypeEntity {
+		return s.BPerStep
+	}
+	if protein == CProteinTypeEntity {
+		return s.CPerStep
+	}
+	if protein == DProteinTypeEntity {
+		return s.DPerStep
+	}
+	return -1
 }
 
 func (s *Stock) IncByType(protein string) int {

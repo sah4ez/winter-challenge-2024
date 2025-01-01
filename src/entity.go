@@ -132,6 +132,22 @@ func (e *Entity) TentacleAttackPosition() Position {
 	return e.Pos
 }
 
+func (e *Entity) SporerFirstCellPosition() Position {
+	if e.OrganDir == DirW {
+		return Position{X: e.Pos.X - 1, Y: e.Pos.Y}
+	}
+	if e.OrganDir == DirE {
+		return Position{X: e.Pos.X + 1, Y: e.Pos.Y}
+	}
+	if e.OrganDir == DirN {
+		return Position{X: e.Pos.X, Y: e.Pos.Y - 1}
+	}
+	if e.OrganDir == DirS {
+		return Position{X: e.Pos.X, Y: e.Pos.Y + 1}
+	}
+	return e.Pos
+}
+
 func NewEntity() *Entity {
 
 	e := &Entity{}

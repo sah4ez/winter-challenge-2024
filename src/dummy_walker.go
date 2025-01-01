@@ -13,7 +13,13 @@ func (s *State) Dummy(e *Entity) bool {
 
 	needAttack := false
 	for _, attackOverProtein := range s.nearProteins {
+		if s.MyStock.NeedCollectProtein(attackOverProtein.Type) {
+			DebugMsg("need collect near protein -> ", attackOverProtein.ToLog())
+		}
 		if s.MyStock.GetPercent(attackOverProtein.Type) < 0.4 {
+			continue
+		}
+		if s.underAttack(attackOverProtein.Pos) {
 			continue
 		}
 
@@ -22,7 +28,7 @@ func (s *State) Dummy(e *Entity) bool {
 		if _, ok := s.nextHash[attackOverProtein.ID()]; !ok {
 			s.nextHash[attackOverProtein.ID()] = attackOverProtein
 			s.nextEntity = append(s.nextEntity, attackOverProtein)
-			// DebugMsg("protein attack -> ", attackOverProtein.ToLog())
+			DebugMsg("protein attack -> ", attackOverProtein.ToLog())
 			needAttack = true
 		}
 	}
@@ -90,6 +96,9 @@ func (s *State) Dummy(e *Entity) bool {
 	for _, free := range s.freePos {
 		if _, ok := s.nextHash[free.ID()]; ok {
 			continue
+		}
+		if free.IsProtein() && s.MyStock.NeedCollectProtein(free.Type) {
+			free.NextDistance = 0.0
 		}
 
 		if free.Type == "" {

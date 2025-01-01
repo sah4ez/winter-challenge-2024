@@ -56,6 +56,22 @@ func (s *Stock) GetPercent(protein string) float64 {
 	return 0.0
 }
 
+func (s *Stock) GetProduction(protein string) int {
+	if protein == AProteinTypeEntity {
+		return s.APerStep
+	}
+	if protein == BProteinTypeEntity {
+		return s.BPerStep
+	}
+	if protein == CProteinTypeEntity {
+		return s.CPerStep
+	}
+	if protein == DProteinTypeEntity {
+		return s.DPerStep
+	}
+	return -1
+}
+
 func (s *Stock) IncByType(protein string) int {
 	if protein == AProteinTypeEntity {
 		s.APerStep += 1
