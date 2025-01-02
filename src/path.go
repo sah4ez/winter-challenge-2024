@@ -6,12 +6,18 @@ func (s *State) PathScore(from Position, to Position) (float64, bool) {
 	// DebugMsg(">>>", fromEntity, toEntity)
 
 	path := s.PathFind(fromEntity, toEntity)
-	// DebugMsg(">>>", path)
 	if path == nil {
 		return 100, false
 	}
+	score := path.TotalCost()
+	found := score > 0
+	if score == 0 {
+		// DebugMsg(">>>", fromEntity, toEntity)
+		// path.Print()
+		score = MaxScorePath
+	}
 
-	return path.TotalCost(), len(path.Entities) > 0
+	return score, found
 }
 
 //func (s *State) PathScore2(from Position, to Position, depth int, hash map[string]struct{}, score int) (int, bool) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"container/heap"
+	"strings"
 )
 
 func (s *State) PathFind(start, dest *Entity) *Path {
@@ -115,10 +116,7 @@ type Path struct {
 // TotalCost returns the total cost of the Path (i.e. is the sum of all of the Cells in the Path).
 func (p *Path) TotalCost() float64 {
 
-	cost := 1.0
-	if p == nil || p.Entities == nil {
-		return 1000
-	}
+	cost := 0.0
 	for _, cell := range p.Entities {
 		cost += cell.Cost
 	}
@@ -234,6 +232,15 @@ func (p *Path) SetIndex(index int) {
 		p.CurrentIndex = index
 	}
 
+}
+
+func (p *Path) Print() {
+
+	pos := []string{}
+	for _, e := range p.Entities {
+		pos = append(pos, e.ID())
+	}
+	DebugMsg("path:", strings.Join(pos, "->"))
 }
 
 // AtStart returns if the Path's current index is 0, the first Cell in the Path.

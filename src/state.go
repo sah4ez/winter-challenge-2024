@@ -183,11 +183,9 @@ func (s *State) ScanReqActions() {
 
 func (s *State) DoAction(g *Game) {
 	organs := s.AvailableOrang()
-	for i := 0; i < s.RequiredActionsCount; i++ {
-		_ = s.GetFreePos(organs)
-		_ = s.GetNearProteins()
-		s.walk(0, 0, s.Dummy)
-	}
+	_ = s.GetFreePos(organs)
+	_ = s.GetNearProteins()
+	s.Dummy(nil)
 	for _, e := range s.nextEntity {
 		DebugMsg(">>>", e.ToLog())
 	}
@@ -325,7 +323,7 @@ func (s *State) DoAction(g *Game) {
 				continue
 			}
 		}
-		if len(s.mySporer) == 0 || len(s.myRoot) == len(s.mySporer) {
+		if len(s.myRoot) < len(s.oppRoot) || len(s.myRoot) >= len(s.mySporer) {
 			if organs.HasSporer() && organs.HasRoot() && s.MyStock.D >= 2 {
 				clusterID := s.proteinsClusters.Nearest(e.Pos.ToCoordinates())
 				if len(s.proteinsClusters) > 0 {
@@ -429,11 +427,21 @@ func (s *State) getByPos(p Position) (e *Entity) {
 		return nil
 	}
 	return row[p.X]
-	//e = row[p.X]
-	//if e == nil {
-	//	e = &Entity{Pos: p, Owner: -1, State: s}
-	//}
-	//return e
+}
+
+func (s *State) setByPos(e *Entity) {
+	if e == nil {
+		return
+	}
+	p := e.Pos
+	if p.Y >= len(s.matrix) || p.Y < 0 {
+		return
+	}
+	row := s.matrix[p.Y]
+	if p.X >= len(row) || p.X < 0 {
+		return
+	}
+	s.matrix[p.Y][p.X] = e
 }
 
 func (s *State) get(x, y int) (e *Entity) {
@@ -715,7 +723,7 @@ func (s *State) AroundOpponet(e *Entity) bool {
 			continue
 		}
 		e := s.getByPos(pos)
-		if e != nil && !e.IsWall() || !e.IsOpponent() {
+		if e != nil && (!e.IsWall() || !e.IsOpponent()) {
 			return false
 		}
 	}
@@ -773,7 +781,6 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 		dir := ""
 		total := 4
 		for total >= 0 && dir == "" {
-			DebugMsg(">>", total, dir)
 			dir = AngleToDir(degree)
 			tentacle := *e
 			tentacle.OrganDir = dir

@@ -31,7 +31,7 @@ func (e *Entity) Scan() {
 		e.Cost = 90.0
 	}
 	if e.IsProtein() {
-		e.Cost = 10.0
+		e.Cost = 50.0
 	}
 	if e.IsEmpty() {
 		e.Cost = 1.0
@@ -171,4 +171,36 @@ func NewEntity() *Entity {
 
 func (e *Entity) Walkable() bool {
 	return e.IsEmpty() || e.IsFree() || e.IsProtein()
+}
+
+func NewWall(x, y int) *Entity {
+	return &Entity{
+		Pos:   Position{X: x, Y: y},
+		Owner: -1,
+		Type:  WallTypeEntity,
+	}
+}
+
+func NewProteinA(x, y int) *Entity {
+	return &Entity{
+		Pos:   Position{X: x, Y: y},
+		Owner: -1,
+		Type:  AProteinTypeEntity,
+	}
+}
+
+func NewEntityMy(x, y int, etype string) *Entity {
+	return &Entity{
+		Pos:   Position{X: x, Y: y},
+		Owner: 1,
+		Type:  etype,
+	}
+}
+
+func NewEntityOpp(x, y int, etype string) *Entity {
+	return &Entity{
+		Pos:   Position{X: x, Y: y},
+		Owner: 0,
+		Type:  etype,
+	}
 }

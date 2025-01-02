@@ -54,20 +54,32 @@ func (s *State) Dummy(e *Entity) bool {
 				s.scanOppoent[opp.ID()] = opp
 			}
 		} else {
-			for _, protein := range s.GetOrderedProtens() {
+			proteins := s.GetOrderedProtens()
+			for i, p := range proteins {
+				p.NextDistance = free.Pos.EucleadDistance(p.Pos)
+				proteins[i] = p
+			}
+			sort.Slice(proteins, func(i, j int) bool {
+				return proteins[i].NextDistance < proteins[j].NextDistance
+			})
+			if len(proteins) > NearestProteins {
+				proteins = append(proteins[:0], proteins[:NearestProteins]...)
+			}
+			for _, protein := range proteins {
 				if _, ok := s.eatProtein[protein.ID()]; ok {
 					continue
 				}
-				//distance := free.Pos.EucleadDistance(protein.Pos)
-				//if distance > float64(s.w/4) {
-				//	// сильно далеко
-				//	continue
-				//}
-				//cost, _ := s.PathScore(free.Pos, protein.Pos)
-				//if cost == 0 {
-				//	cost = free.Pos.EucleadDistance(protein.Pos)
-				//}
-				cost := free.Pos.EucleadDistance(protein.Pos)
+				if s.AroundOpponet(protein) {
+					continue
+				}
+				cost, _ := s.PathScore(free.Pos, protein.Pos)
+				if cost >= MaxScorePath {
+					continue
+				}
+				// if cost == 0 {
+				// cost = free.Pos.EucleadDistance(protein.Pos)
+				// }
+				// cost := free.Pos.EucleadDistance(protein.Pos)
 				if math.Abs(cost) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && cost >= 0) {
 					free.NextDistance = math.Abs(cost) / s.MyStock.GetPercent(protein.Type)
 					free.Protein = protein
@@ -100,10 +112,20 @@ func (s *State) Dummy(e *Entity) bool {
 	}
 
 	sort.Slice(s.freePos, func(i, j int) bool {
-		return s.freePos[i].NextDistance > s.freePos[j].NextDistance
+		return s.freePos[i].NextDistance < s.freePos[j].NextDistance
 	})
 	min := s.freePos[0]
+	maxDistance := make([]struct{}, 0)
+	zeroDistance := make([]*Entity, 0)
 	for _, free := range s.freePos {
+		if free.NextDistance == 0.0 {
+			zeroDistance = append(zeroDistance, free)
+			continue
+		}
+		if free.NextDistance >= MaxScorePath {
+			maxDistance = append(maxDistance, struct{}{})
+			DebugMsg("skip cell", free.ToLog())
+		}
 		if _, ok := s.nextHash[free.ID()]; ok {
 			continue
 		}
@@ -123,22 +145,32 @@ func (s *State) Dummy(e *Entity) bool {
 			OrganRootID:  free.OrganRootID,
 		}
 		if free.CanAttack {
-			min = free
 			s.matrix[free.Pos.Y][free.Pos.X].Type = AttackTypeEntity
+			s.nextEntity = append(s.nextEntity, free)
 			continue
 		}
-		if min.NextDistance >= free.NextDistance {
-			min = free
-			min.OrganDir = s.GetHarvesterDir(min)
-			if min.NextDistance == 1 {
-				min.OrganDir = s.GetHarvesterDir(min)
+		free.OrganDir = s.GetHarvesterDir(free)
+		if free.NextDistance == 1 {
+			free.OrganDir = s.GetHarvesterDir(min)
+		}
+		s.nextEntity = append(s.nextEntity, free)
+	}
+	if len(maxDistance) >= len(s.freePos) {
+		for _, nearProtein := range s.nearProteins {
+			if s.underAttack(nearProtein.Pos) {
+				continue
+			}
+			nearProtein.NextDistance = 0.0
+			if _, ok := s.nextHash[nearProtein.ID()]; !ok {
+				s.nextHash[nearProtein.ID()] = nearProtein
+				s.nextEntity = append(s.nextEntity, nearProtein)
 			}
 		}
+		return false
 	}
 
-	if _, ok := s.nextHash[min.ID()]; !ok {
-		s.nextHash[min.ID()] = min
-		s.nextEntity = append(s.nextEntity, min)
+	if len(zeroDistance) == len(s.freePos) {
+		s.nextEntity = append(s.nextEntity, zeroDistance...)
 	}
 
 	return false

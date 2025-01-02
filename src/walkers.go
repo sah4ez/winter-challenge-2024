@@ -19,8 +19,10 @@ func (s *State) walk(x, y int, fn func(e *Entity) bool) {
 			continue
 		}
 		for _, n := range k[y:] {
-			if !fn(n) {
-				break
+			if n != nil && n.IsMy() && s.FreeEntites(n) {
+				if !fn(n) {
+					break
+				}
 			}
 		}
 	}
