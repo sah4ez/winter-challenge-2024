@@ -17,7 +17,7 @@ func PointToAngle(from, to Position) int {
 	res := math.Atan2(bx-ax, by-ay)
 	degree := res * 180 / math.Pi
 
-	DebugMsg("angle", res, res*180/math.Pi)
+	// DebugMsg("angle", res, res*180/math.Pi)
 	return int(math.Round(degree))
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"container/heap"
 	"fmt"
 	"math"
 	"math/rand"
@@ -11,6 +12,273 @@ import (
 	"time"
 	// "testing"
 )
+
+func (s *State) PathFind(start, dest *Entity) *Path {
+
+	openNodes := minHeap{}
+	heap.Push(&openNodes, &Node{Entity: dest, Cost: dest.Cost})
+
+	checkedNodes := make([]*Entity, 0)
+
+	hasBeenAdded := func(entity *Entity) bool {
+
+		for _, c := range checkedNodes {
+			if entity.Pos.Equal(c.Pos) {
+				return true
+			}
+		}
+		return false
+
+	}
+
+	path := &Path{
+		Entities: make([]*Entity, 0),
+	}
+
+	if !start.Walkable() || !dest.Walkable() {
+		return nil
+	}
+
+	for {
+
+		// If the list of openNodes (nodes to check) is at 0, then we've checked all Nodes, and so the function can quit.
+		if len(openNodes) == 0 {
+			break
+		}
+
+		node := heap.Pop(&openNodes).(*Node)
+		// DebugMsg(">>", node.Entity.ToLog())
+
+		// If we've reached the start, then we've constructed our Path going from the destination to the start; we just have
+		// to loop through each Node and go up, adding it and its parents recursively to the path.
+		if node.Entity.Pos.Equal(start.Pos) {
+
+			var t = node
+			for true {
+				path.Entities = append(path.Entities, t.Entity)
+				t = t.Parent
+				if t == nil {
+					break
+				}
+			}
+
+			break
+		}
+
+		// Otherwise, we add the current node's neighbors to the list of cells to check, and list of cells that have already been
+		// checked (so we don't get nodes being checked multiple times).
+		if node.Entity.Pos.X > 0 {
+			if s.InMatrix(NewPos(node.Entity.Pos.X-1, node.Entity.Pos.Y)) {
+				c := s.get(node.Entity.Pos.X-1, node.Entity.Pos.Y)
+				n := &Node{c, node, c.Cost + node.Cost}
+				if n.Entity.Walkable() && !hasBeenAdded(n.Entity) {
+					heap.Push(&openNodes, n)
+					checkedNodes = append(checkedNodes, n.Entity)
+				}
+			}
+		}
+		if node.Entity.Pos.X < s.Width()-1 {
+			if s.InMatrix(NewPos(node.Entity.Pos.X+1, node.Entity.Pos.Y)) {
+				c := s.get(node.Entity.Pos.X+1, node.Entity.Pos.Y)
+				n := &Node{c, node, c.Cost + node.Cost}
+				if n.Entity.Walkable() && !hasBeenAdded(n.Entity) {
+					heap.Push(&openNodes, n)
+					checkedNodes = append(checkedNodes, n.Entity)
+				}
+			}
+		}
+
+		if node.Entity.Pos.Y > 0 {
+			if s.InMatrix(NewPos(node.Entity.Pos.X, node.Entity.Pos.Y-1)) {
+				c := s.get(node.Entity.Pos.X, node.Entity.Pos.Y-1)
+				n := &Node{c, node, c.Cost + node.Cost}
+				if n.Entity.Walkable() && !hasBeenAdded(n.Entity) {
+					heap.Push(&openNodes, n)
+					checkedNodes = append(checkedNodes, n.Entity)
+				}
+			}
+		}
+		if node.Entity.Pos.Y < s.Height()-1 {
+			if s.InMatrix(NewPos(node.Entity.Pos.X, node.Entity.Pos.Y+1)) {
+				c := s.get(node.Entity.Pos.X, node.Entity.Pos.Y+1)
+				n := &Node{c, node, c.Cost + node.Cost}
+				if n.Entity.Walkable() && !hasBeenAdded(n.Entity) {
+					heap.Push(&openNodes, n)
+					checkedNodes = append(checkedNodes, n.Entity)
+				}
+			}
+		}
+	}
+
+	return path
+
+}
+
+// A Path is a struct that represents a path, or sequence of Cells from point A to point B. The Cells list is the list of Cells contained in the Path,
+// and the CurrentIndex value represents the current step on the Path. Using Path.Next() and Path.Prev() advances and walks back the Path by one step.
+type Path struct {
+	Entities     []*Entity
+	CurrentIndex int
+}
+
+// TotalCost returns the total cost of the Path (i.e. is the sum of all of the Cells in the Path).
+func (p *Path) TotalCost() float64 {
+
+	cost := 1.0
+	if p == nil || p.Entities == nil {
+		return 1000
+	}
+	for _, cell := range p.Entities {
+		cost += cell.Cost
+	}
+	return cost
+
+}
+
+// Reverse reverses the Cells in the Path.
+func (p *Path) Reverse() {
+
+	np := []*Entity{}
+
+	for c := len(p.Entities) - 1; c >= 0; c-- {
+		np = append(np, p.Entities[c])
+	}
+
+	p.Entities = np
+
+}
+
+// Restart restarts the Path, so that calling path.Current() will now return the first Cell in the Path.
+func (p *Path) Restart() {
+	p.CurrentIndex = 0
+}
+
+// Current returns the current Cell in the Path.
+func (p *Path) Current() *Entity {
+	return p.Entities[p.CurrentIndex]
+
+}
+
+// Next returns the next cell in the path. If the Path is at the end, Next() returns nil.
+func (p *Path) Next() *Entity {
+
+	if p.CurrentIndex < len(p.Entities)-1 {
+		return p.Entities[p.CurrentIndex+1]
+	}
+	return nil
+
+}
+
+// Advance advances the path by one cell.
+func (p *Path) Advance() {
+
+	p.CurrentIndex++
+	if p.CurrentIndex >= len(p.Entities) {
+		p.CurrentIndex = len(p.Entities) - 1
+	}
+
+}
+
+// Prev returns the previous cell in the path. If the Path is at the start, Prev() returns nil.
+func (p *Path) Prev() *Entity {
+
+	if p.CurrentIndex > 0 {
+		return p.Entities[p.CurrentIndex-1]
+	}
+	return nil
+
+}
+
+// Same returns if the Path shares the exact same cells as the other specified Path.
+func (p *Path) Same(otherPath *Path) bool {
+
+	if p == nil || otherPath == nil || len(p.Entities) != len(otherPath.Entities) {
+		return false
+	}
+
+	for i := range p.Entities {
+		if len(otherPath.Entities) <= i || p.Entities[i] != otherPath.Entities[i] {
+			return false
+		}
+	}
+
+	return true
+
+}
+
+// Length returns the length of the Path (how many Cells are in the Path).
+func (p *Path) Length() int {
+	return len(p.Entities)
+}
+
+// Get returns the Cell of the specified index in the Path. If the index is outside of the
+// length of the Path, it returns -1.
+func (p *Path) Get(index int) *Entity {
+	if index < len(p.Entities) {
+		return p.Entities[index]
+	}
+	return nil
+}
+
+// Index returns the index of the specified Cell in the Path. If the Cell isn't contained
+// in the Path, it returns -1.
+func (p *Path) Index(cell *Entity) int {
+	for i, c := range p.Entities {
+		if c == cell {
+			return i
+		}
+	}
+	return -1
+}
+
+// SetIndex sets the index of the Path, allowing you to safely manually manipulate the Path
+// as necessary. If the index exceeds the bounds of the Path, it will be clamped.
+func (p *Path) SetIndex(index int) {
+
+	if index >= len(p.Entities) {
+		p.CurrentIndex = len(p.Entities) - 1
+	} else if index < 0 {
+		p.CurrentIndex = 0
+	} else {
+		p.CurrentIndex = index
+	}
+
+}
+
+// AtStart returns if the Path's current index is 0, the first Cell in the Path.
+func (p *Path) AtStart() bool {
+	return p.CurrentIndex == 0
+}
+
+// AtEnd returns if the Path's current index is the last Cell in the Path.
+func (p *Path) AtEnd() bool {
+	return p.CurrentIndex >= len(p.Entities)-1
+}
+
+// Node represents the node a path, it contains the cell it represents.
+// Also contains other information such as the parent and the cost.
+type Node struct {
+	Entity *Entity
+	Parent *Node
+	Cost   float64
+}
+
+type minHeap []*Node
+
+func (mH minHeap) Len() int           { return len(mH) }
+func (mH minHeap) Less(i, j int) bool { return mH[i].Cost < mH[j].Cost }
+func (mH minHeap) Swap(i, j int)      { mH[i], mH[j] = mH[j], mH[i] }
+func (mH *minHeap) Pop() interface{} {
+	old := *mH
+	n := len(old)
+	x := old[n-1]
+	*mH = old[0 : n-1]
+	return x
+}
+
+func (mH *minHeap) Push(x interface{}) {
+	*mH = append(*mH, x.(*Node))
+}
 
 // A Cluster which data points gravitate around
 type Cluster struct {
@@ -152,6 +420,8 @@ const CProteinTypeEntity = "C"
 const DProteinTypeEntity = "D"
 const DoNotUseEntityDistance = 9999
 const ClusterCenter = "✨"
+const MaxDepthWalking = 100
+const InitScore = 1000
 
 func (s *State) Dummy(e *Entity) bool {
 
@@ -193,7 +463,7 @@ func (s *State) Dummy(e *Entity) bool {
 				if !s.FreeOppEntites(opp) {
 					continue
 				}
-				newDistance := free.Pos.Distance(opp.Pos)
+				newDistance := free.Pos.EucleadDistance(opp.Pos)
 				if math.Abs(newDistance) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && newDistance >= 0) {
 					free.NextDistance += math.Abs(newDistance)
 					free.CanAttack = true
@@ -206,10 +476,19 @@ func (s *State) Dummy(e *Entity) bool {
 				if _, ok := s.eatProtein[protein.ID()]; ok {
 					continue
 				}
-				newDistance := free.Pos.Distance(protein.Pos)
-				if math.Abs(newDistance) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && newDistance >= 0) {
-					free.NextDistance = math.Abs(newDistance) / s.MyStock.GetPercent(protein.Type)
+				distance := free.Pos.EucleadDistance(protein.Pos)
+				if distance > float64(s.w/4) {
+					// сильно далеко
+					continue
+				}
+				cost, _ := s.PathScore(free.Pos, protein.Pos)
+				if cost == 0 {
+					cost = free.Pos.EucleadDistance(protein.Pos)
+				}
+				if math.Abs(cost) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && cost >= 0) {
+					free.NextDistance = math.Abs(cost) / s.MyStock.GetPercent(protein.Type)
 					free.Protein = protein
+					free.Cost = cost
 					s.freePos[i] = free
 				}
 			}
@@ -292,16 +571,30 @@ type Entity struct {
 	OrganRootID   int
 
 	NextDistance  float64
-	Score         float64
+	Cost          float64
 	Protein       *Entity
 	CanAttack     bool
 	ClusterCenter bool
 	SporeTo       Position
 	CanSpaces     bool
+	State         *State
 }
 
 func (e *Entity) Scan() {
 	fmt.Scan(&e.Pos.X, &e.Pos.Y, &e.Type, &e.Owner, &e.OrganID, &e.OrganDir, &e.OrganParentID, &e.OrganRootID)
+	if e.IsWall() {
+		e.Cost = 100.0
+	}
+
+	if e.IsOpponent() || e.IsMy() {
+		e.Cost = 90.0
+	}
+	if e.IsProtein() {
+		e.Cost = 10.0
+	}
+	if e.IsEmpty() {
+		e.Cost = 1.0
+	}
 }
 
 func (e *Entity) GrowBasic() string {
@@ -433,6 +726,10 @@ func NewEntity() *Entity {
 	e := &Entity{}
 	e.Scan()
 	return e
+}
+
+func (e *Entity) Walkable() bool {
+	return e.IsEmpty() || e.IsFree() || e.IsProtein()
 }
 
 type Game struct {
@@ -743,9 +1040,188 @@ func (o Organs) HasHarvester() bool {
 	return ok
 }
 
+func (s *State) PathScore(from Position, to Position) (float64, bool) {
+	fromEntity := s.get(from.X, from.Y)
+	toEntity := s.get(to.X, to.Y)
+	// DebugMsg(">>>", fromEntity, toEntity)
+
+	path := s.PathFind(fromEntity, toEntity)
+	// DebugMsg(">>>", path)
+	if path == nil {
+		return 100, false
+	}
+
+	return path.TotalCost(), len(path.Entities) > 0
+}
+
+//func (s *State) PathScore2(from Position, to Position, depth int, hash map[string]struct{}, score int) (int, bool) {
+//	find := false
+//	if depth == MaxDepthWalking {
+//		return 0, find
+//	}
+//	if score == InitScore {
+//		return InitScore, find
+//	}
+//	if hash == nil {
+//		hash = make(map[string]struct{}, 0)
+//	}
+//	hash[from.ID()] = struct{}{}
+//
+//	depth += 1
+//	dirs := from.GetRoseLocality()
+//	for i, dir := range dirs {
+//		if !s.InMatrix(dir) {
+//			continue
+//		}
+//		if _, ok := hash[dir.ID()]; ok {
+//			continue
+//		}
+//		DebugMsg(">>", score, depth, from.ToLog(), to.ToLog(), dir.ToLog())
+//		e := s.getByPos(dir)
+//		if e != nil && (e.IsMy() || e.IsOpponent() || e.IsWall()) {
+//			continue
+//		}
+//		if dir.Parent != nil {
+//			continue
+//		}
+//		dir.Parent = &from
+//		dirs[i] = dir
+//		if dir.Equal(to) {
+//			DebugMsg("FIND>", score, depth, from.ToLog(), to.ToLog(), dir.ToLog())
+//			find = true
+//			return score + 10, find
+//		}
+//	}
+//
+//	score += 10
+//	for _, dir := range dirs {
+//		if !s.InMatrix(dir) {
+//			continue
+//		}
+//		if _, ok := hash[dir.ID()]; ok {
+//			continue
+//		}
+//		// hash[dir.ID()] = struct{}{}
+//		DebugMsg(">>", score, depth, from.ToLog(), to.ToLog(), dir.ToLog())
+//		e := s.getByPos(dir)
+//		if e != nil && (e.IsMy() || e.IsOpponent() || e.IsWall()) {
+//			continue
+//		}
+//		score, find = s.PathScore(dir, to, depth, hash, score)
+//		if find {
+//			break
+//		}
+//	}
+//	return score, find
+//}
+
+func TestPathScore(t *testing.T) {
+	testCases := []struct {
+		name    string
+		s       State
+		from    Position
+		to      Position
+		exp     float64
+		expFind bool
+	}{
+		{
+			name: "one step right",
+			s: State{
+				w: 10,
+				h: 10,
+			},
+			from:    NewPos(0, 0),
+			to:      NewPos(0, 1),
+			exp:     1.0,
+			expFind: true,
+		},
+		{
+			name: "ten step right",
+			s: State{
+				w: 10,
+				h: 10,
+			},
+			from:    NewPos(0, 0),
+			to:      NewPos(0, 3),
+			exp:     3.0,
+			expFind: true,
+		},
+		{
+			name: "1 step by diagonal",
+			s: State{
+				w: 10,
+				h: 10,
+			},
+			from:    NewPos(0, 0),
+			to:      NewPos(1, 1),
+			exp:     2.0,
+			expFind: true,
+		},
+		{
+			name: "2 step by diagonal",
+			s: State{
+				w: 10,
+				h: 10,
+			},
+			from:    NewPos(0, 0),
+			to:      NewPos(2, 2),
+			exp:     4.0,
+			expFind: true,
+		},
+		{
+			name: "3 step by diagonal",
+			s: State{
+				w: 10,
+				h: 10,
+			},
+			from:    NewPos(0, 0),
+			to:      NewPos(3, 3),
+			exp:     6.0,
+			expFind: true,
+		},
+		{
+			name: "9 step by diagonal",
+			s: State{
+				w: 10,
+				h: 10,
+			},
+			from:    NewPos(0, 0),
+			to:      NewPos(9, 9),
+			exp:     18.0,
+			expFind: true,
+		},
+		{
+			name: "9 step by diagonal",
+			s: State{
+				w: 10,
+				h: 10,
+			},
+			from:    NewPos(0, 0),
+			to:      NewPos(9, 9),
+			exp:     18.0,
+			expFind: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name+":"+tc.from.ToLog()+"->"+tc.to.ToLog(), func(t *testing.T) {
+			tc.s.initMatrix()
+			act, find := tc.s.PathScore(tc.from, tc.to)
+			if act != tc.exp {
+				t.Error("unexpected score", act, tc.exp)
+			}
+			if find != tc.expFind {
+				t.Error("unexpected find result", find, tc.expFind)
+			}
+		})
+	}
+}
+
 type Position struct {
 	X int
 	Y int
+
+	Parent *Position
 }
 
 func (p Position) ID() string {
@@ -794,7 +1270,7 @@ func (p Position) GetRoseLocality() []Position {
 	}
 }
 
-func (from Position) Distance(to Position) float64 {
+func (from Position) EucleadDistance(to Position) float64 {
 	return math.Sqrt(math.Pow(float64(to.X-from.X), 2) + math.Pow(float64(to.Y-from.Y), 2))
 }
 
@@ -806,7 +1282,13 @@ func (p Position) ToCoordinates() Coordinates {
 }
 
 func (p Position) ToLog() string {
-	return fmt.Sprintf("(%d:%d)", p.X, p.Y)
+	depth := 0
+	parent := p.Parent
+	for parent != nil {
+		parent = parent.Parent
+		depth += 1
+	}
+	return fmt.Sprintf("(%d:%d)%d", p.X, p.Y, depth)
 }
 
 func FromCoordinates(c Coordinates) Position {
@@ -819,6 +1301,10 @@ func FromCoordinates(c Coordinates) Position {
 func (s *State) InMatrix(p Position) bool {
 	out := p.X < 0 || p.Y < 0 || p.Y >= s.w || p.X >= s.h
 	return !out
+}
+
+func NewPos(x, y int) Position {
+	return Position{X: x, Y: y}
 }
 
 type State struct {
@@ -882,6 +1368,7 @@ func (s *State) ScanEnties() {
 
 	for i := 0; i < s.EntityCount; i++ {
 		e := NewEntity()
+		e.State = s
 		if e.IsMy() {
 			s.myEntities = append(s.myEntities, e)
 			myObs = append(myObs, e.Pos.ToCoordinates())
@@ -1049,68 +1536,74 @@ func (s *State) DoAction(g *Game) {
 			g.StopSporer()
 			// DebugMsg("sporer stop", from.ToLog(), "->", to.ToLog())
 			sporer := s.getByPos(from)
-			dir := sporer.OrganDir
-			shift := true
-			var cancelShift func()
-			total := 0
-			for shift {
-				if total == 8 {
-					break
-				}
-				switch dir {
-				case DirE:
-					from.X += 1
-					if from.X >= to.X {
-						shift = false
+			if sporer != nil {
+				dir := sporer.OrganDir
+				shift := true
+				var cancelShift func()
+				total := 0
+				for shift {
+					if total == 8 {
+						break
 					}
-					cancelShift = func() {
-						from.X -= 1
-					}
-				case DirW:
-					from.X -= 1
-					if from.X <= to.X {
-						shift = false
-					}
-					cancelShift = func() {
+					switch dir {
+					case DirE:
 						from.X += 1
-					}
-				case DirN:
-					from.Y -= 1
-					if from.Y <= to.Y {
-						shift = false
-					}
-					cancelShift = func() {
-						from.Y += 1
-					}
-				case DirS:
-					from.Y += 1
-					if from.Y >= to.Y {
-						shift = false
-					}
-					cancelShift = func() {
+						if from.X >= to.X {
+							shift = false
+						}
+						cancelShift = func() {
+							from.X -= 1
+						}
+					case DirW:
+						from.X -= 1
+						if from.X <= to.X {
+							shift = false
+						}
+						cancelShift = func() {
+							from.X += 1
+						}
+					case DirN:
 						from.Y -= 1
+						if from.Y <= to.Y {
+							shift = false
+						}
+						cancelShift = func() {
+							from.Y += 1
+						}
+					case DirS:
+						from.Y += 1
+						if from.Y >= to.Y {
+							shift = false
+						}
+						cancelShift = func() {
+							from.Y -= 1
+						}
 					}
+					pos := s.getByPos(from)
+					if pos != nil && pos.IsWall() {
+						break
+					}
+					total += 1
 				}
-				total += 1
-			}
-			// DebugMsg("sporer condition:", from.ToLog())
-			pos := s.getByPos(from)
-			if pos == nil {
-				sporer.SporeTo = from
-				fmt.Println(sporer.Spore())
-				continue
-			}
-			// DebugMsg("sporer condition:", from.ToLog(), pos.ToLog())
-			if pos.IsEmpty() || pos.IsFree() {
-				sporer.SporeTo = from
-				fmt.Println(sporer.Spore())
-				continue
-			}
-			if pos.IsWall() && cancelShift != nil {
-				cancelShift()
-				sporer.SporeTo = from
-				fmt.Println(sporer.Spore())
-				continue
+				DebugMsg("sporer condition:", from.ToLog())
+				pos := s.getByPos(from)
+				if pos == nil {
+					sporer.SporeTo = from
+					fmt.Println(sporer.Spore())
+					continue
+				}
+				DebugMsg("sporer condition:", from.ToLog(), pos.ToLog())
+				if pos.IsEmpty() || pos.IsFree() {
+					sporer.SporeTo = from
+					fmt.Println(sporer.Spore())
+					continue
+				}
+				if pos.IsWall() && cancelShift != nil {
+					cancelShift()
+					sporer.SporeTo = from
+					fmt.Println(sporer.Spore())
+					continue
+				}
 			}
 		}
 		if e.CanAttack {
@@ -1237,6 +1730,35 @@ func (s *State) getByPos(p Position) (e *Entity) {
 		return nil
 	}
 	return row[p.X]
+	//e = row[p.X]
+	//if e == nil {
+	//	e = &Entity{Pos: p, Owner: -1, State: s}
+	//}
+	//return e
+}
+
+func (s *State) get(x, y int) (e *Entity) {
+	p := Position{X: x, Y: y}
+	if p.Y >= len(s.matrix) || p.Y < 0 {
+		return nil
+	}
+	row := s.matrix[p.Y]
+	if p.X >= len(row) || p.X < 0 {
+		return nil
+	}
+	e = row[p.X]
+	if e == nil {
+		e = &Entity{Pos: p, Owner: -1, State: s, Cost: 1}
+	}
+	return e
+}
+
+func (s *State) Width() int {
+	return s.w
+}
+
+func (s *State) Height() int {
+	return s.h
 }
 
 func (s *State) GetNearProteins() []*Entity {
@@ -1403,31 +1925,29 @@ func (s *State) GetHarvesterDir(e *Entity) string {
 	if e == nil {
 		return ""
 	}
-	up := s.getByPos(e.Pos.Up())
-	if up != nil && up.IsProtein() {
-		if _, ok := s.eatProtein[up.ID()]; !ok {
-			return DirN
+	hash := make(map[string]*Entity, 0)
+	dirs := e.Pos.GetRoseLocality()
+	for _, dir := range dirs {
+		if !s.InMatrix(dir) {
+			continue
+		}
+		p := s.getByPos(dir)
+		if p == nil {
+			continue
+		}
+		if p.IsProtein() {
+			if _, ok := hash[p.Type]; !ok {
+				hash[p.Type] = p
+			}
 		}
 	}
-	down := s.getByPos(e.Pos.Down())
-	if down != nil && down.IsProtein() {
-		if _, ok := s.eatProtein[down.ID()]; !ok {
-			return DirS
+	orderedStock := s.MyStock.GetOrderByCountAsc()
+	for _, tp := range orderedStock {
+		if v, ok := hash[tp]; ok {
+			degree := PointToAngle(e.Pos, v.Pos)
+			return AngleToDir(degree)
 		}
 	}
-	left := s.getByPos(e.Pos.Left())
-	if left != nil && left.IsProtein() {
-		if _, ok := s.eatProtein[left.ID()]; !ok {
-			return DirW
-		}
-	}
-	right := s.getByPos(e.Pos.Right())
-	if right != nil && right.IsProtein() {
-		if _, ok := s.eatProtein[right.ID()]; !ok {
-			return DirE
-		}
-	}
-
 	return ""
 }
 
@@ -1540,7 +2060,7 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 	result := make([]Entity, 0)
 	for _, opp := range s.oppEntities {
 		if s.FreeOppEntites(opp) {
-			distance := e.Pos.Distance(opp.Pos)
+			distance := e.Pos.EucleadDistance(opp.Pos)
 			newOpp := *opp
 			newOpp.NextDistance = distance
 			result = append(result, newOpp)
@@ -1666,6 +2186,13 @@ func (s *State) FreeOppEntites(e *Entity) bool {
 		}
 	}
 	return len(full) > 0
+}
+
+func (s *State) initMatrix() {
+	s.matrix = make([][]*Entity, 0)
+	for i := 0; i < s.w; i++ {
+		s.matrix = append(s.matrix, make([]*Entity, s.h))
+	}
 }
 
 func NewState(h, w int) *State {
@@ -1888,7 +2415,7 @@ func PointToAngle(from, to Position) int {
 	res := math.Atan2(bx-ax, by-ay)
 	degree := res * 180 / math.Pi
 
-	DebugMsg("angle", res, res*180/math.Pi)
+	// DebugMsg("angle", res, res*180/math.Pi)
 	return int(math.Round(degree))
 }
 

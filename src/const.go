@@ -22,3 +22,5 @@ const CProteinTypeEntity = "C"
 const DProteinTypeEntity = "D"
 const DoNotUseEntityDistance = 9999
 const ClusterCenter = "✨"
+const MaxDepthWalking = 100
+const InitScore = 1000

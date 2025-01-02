@@ -8,6 +8,8 @@ import (
 type Position struct {
 	X int
 	Y int
+
+	Parent *Position
 }
 
 func (p Position) ID() string {
@@ -56,7 +58,7 @@ func (p Position) GetRoseLocality() []Position {
 	}
 }
 
-func (from Position) Distance(to Position) float64 {
+func (from Position) EucleadDistance(to Position) float64 {
 	return math.Sqrt(math.Pow(float64(to.X-from.X), 2) + math.Pow(float64(to.Y-from.Y), 2))
 }
 
@@ -68,7 +70,13 @@ func (p Position) ToCoordinates() Coordinates {
 }
 
 func (p Position) ToLog() string {
-	return fmt.Sprintf("(%d:%d)", p.X, p.Y)
+	depth := 0
+	parent := p.Parent
+	for parent != nil {
+		parent = parent.Parent
+		depth += 1
+	}
+	return fmt.Sprintf("(%d:%d)%d", p.X, p.Y, depth)
 }
 
 func FromCoordinates(c Coordinates) Position {
@@ -81,4 +89,8 @@ func FromCoordinates(c Coordinates) Position {
 func (s *State) InMatrix(p Position) bool {
 	out := p.X < 0 || p.Y < 0 || p.Y >= s.w || p.X >= s.h
 	return !out
+}
+
+func NewPos(x, y int) Position {
+	return Position{X: x, Y: y}
 }

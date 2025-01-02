@@ -45,7 +45,7 @@ func (s *State) Dummy(e *Entity) bool {
 				if !s.FreeOppEntites(opp) {
 					continue
 				}
-				newDistance := free.Pos.Distance(opp.Pos)
+				newDistance := free.Pos.EucleadDistance(opp.Pos)
 				if math.Abs(newDistance) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && newDistance >= 0) {
 					free.NextDistance += math.Abs(newDistance)
 					free.CanAttack = true
@@ -58,10 +58,20 @@ func (s *State) Dummy(e *Entity) bool {
 				if _, ok := s.eatProtein[protein.ID()]; ok {
 					continue
 				}
-				newDistance := free.Pos.Distance(protein.Pos)
-				if math.Abs(newDistance) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && newDistance >= 0) {
-					free.NextDistance = math.Abs(newDistance) / s.MyStock.GetPercent(protein.Type)
+				//distance := free.Pos.EucleadDistance(protein.Pos)
+				//if distance > float64(s.w/4) {
+				//	// сильно далеко
+				//	continue
+				//}
+				//cost, _ := s.PathScore(free.Pos, protein.Pos)
+				//if cost == 0 {
+				//	cost = free.Pos.EucleadDistance(protein.Pos)
+				//}
+				cost := free.Pos.EucleadDistance(protein.Pos)
+				if math.Abs(cost) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && cost >= 0) {
+					free.NextDistance = math.Abs(cost) / s.MyStock.GetPercent(protein.Type)
 					free.Protein = protein
+					free.Cost = cost
 					s.freePos[i] = free
 				}
 			}

@@ -12,16 +12,30 @@ type Entity struct {
 	OrganRootID   int
 
 	NextDistance  float64
-	Score         float64
+	Cost          float64
 	Protein       *Entity
 	CanAttack     bool
 	ClusterCenter bool
 	SporeTo       Position
 	CanSpaces     bool
+	State         *State
 }
 
 func (e *Entity) Scan() {
 	fmt.Scan(&e.Pos.X, &e.Pos.Y, &e.Type, &e.Owner, &e.OrganID, &e.OrganDir, &e.OrganParentID, &e.OrganRootID)
+	if e.IsWall() {
+		e.Cost = 100.0
+	}
+
+	if e.IsOpponent() || e.IsMy() {
+		e.Cost = 90.0
+	}
+	if e.IsProtein() {
+		e.Cost = 10.0
+	}
+	if e.IsEmpty() {
+		e.Cost = 1.0
+	}
 }
 
 func (e *Entity) GrowBasic() string {
@@ -153,4 +167,8 @@ func NewEntity() *Entity {
 	e := &Entity{}
 	e.Scan()
 	return e
+}
+
+func (e *Entity) Walkable() bool {
+	return e.IsEmpty() || e.IsFree() || e.IsProtein()
 }

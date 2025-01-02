@@ -67,6 +67,7 @@ func (s *State) ScanEnties() {
 
 	for i := 0; i < s.EntityCount; i++ {
 		e := NewEntity()
+		e.State = s
 		if e.IsMy() {
 			s.myEntities = append(s.myEntities, e)
 			myObs = append(myObs, e.Pos.ToCoordinates())
@@ -277,16 +278,20 @@ func (s *State) DoAction(g *Game) {
 							from.Y -= 1
 						}
 					}
+					pos := s.getByPos(from)
+					if pos != nil && pos.IsWall() {
+						break
+					}
 					total += 1
 				}
-				// DebugMsg("sporer condition:", from.ToLog())
+				DebugMsg("sporer condition:", from.ToLog())
 				pos := s.getByPos(from)
 				if pos == nil {
 					sporer.SporeTo = from
 					fmt.Println(sporer.Spore())
 					continue
 				}
-				// DebugMsg("sporer condition:", from.ToLog(), pos.ToLog())
+				DebugMsg("sporer condition:", from.ToLog(), pos.ToLog())
 				if pos.IsEmpty() || pos.IsFree() {
 					sporer.SporeTo = from
 					fmt.Println(sporer.Spore())
@@ -424,6 +429,35 @@ func (s *State) getByPos(p Position) (e *Entity) {
 		return nil
 	}
 	return row[p.X]
+	//e = row[p.X]
+	//if e == nil {
+	//	e = &Entity{Pos: p, Owner: -1, State: s}
+	//}
+	//return e
+}
+
+func (s *State) get(x, y int) (e *Entity) {
+	p := Position{X: x, Y: y}
+	if p.Y >= len(s.matrix) || p.Y < 0 {
+		return nil
+	}
+	row := s.matrix[p.Y]
+	if p.X >= len(row) || p.X < 0 {
+		return nil
+	}
+	e = row[p.X]
+	if e == nil {
+		e = &Entity{Pos: p, Owner: -1, State: s, Cost: 1}
+	}
+	return e
+}
+
+func (s *State) Width() int {
+	return s.w
+}
+
+func (s *State) Height() int {
+	return s.h
 }
 
 func (s *State) GetNearProteins() []*Entity {
@@ -590,31 +624,29 @@ func (s *State) GetHarvesterDir(e *Entity) string {
 	if e == nil {
 		return ""
 	}
-	up := s.getByPos(e.Pos.Up())
-	if up != nil && up.IsProtein() {
-		if _, ok := s.eatProtein[up.ID()]; !ok {
-			return DirN
+	hash := make(map[string]*Entity, 0)
+	dirs := e.Pos.GetRoseLocality()
+	for _, dir := range dirs {
+		if !s.InMatrix(dir) {
+			continue
+		}
+		p := s.getByPos(dir)
+		if p == nil {
+			continue
+		}
+		if p.IsProtein() {
+			if _, ok := hash[p.Type]; !ok {
+				hash[p.Type] = p
+			}
 		}
 	}
-	down := s.getByPos(e.Pos.Down())
-	if down != nil && down.IsProtein() {
-		if _, ok := s.eatProtein[down.ID()]; !ok {
-			return DirS
+	orderedStock := s.MyStock.GetOrderByCountAsc()
+	for _, tp := range orderedStock {
+		if v, ok := hash[tp]; ok {
+			degree := PointToAngle(e.Pos, v.Pos)
+			return AngleToDir(degree)
 		}
 	}
-	left := s.getByPos(e.Pos.Left())
-	if left != nil && left.IsProtein() {
-		if _, ok := s.eatProtein[left.ID()]; !ok {
-			return DirW
-		}
-	}
-	right := s.getByPos(e.Pos.Right())
-	if right != nil && right.IsProtein() {
-		if _, ok := s.eatProtein[right.ID()]; !ok {
-			return DirE
-		}
-	}
-
 	return ""
 }
 
@@ -727,7 +759,7 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 	result := make([]Entity, 0)
 	for _, opp := range s.oppEntities {
 		if s.FreeOppEntites(opp) {
-			distance := e.Pos.Distance(opp.Pos)
+			distance := e.Pos.EucleadDistance(opp.Pos)
 			newOpp := *opp
 			newOpp.NextDistance = distance
 			result = append(result, newOpp)
@@ -853,6 +885,13 @@ func (s *State) FreeOppEntites(e *Entity) bool {
 		}
 	}
 	return len(full) > 0
+}
+
+func (s *State) initMatrix() {
+	s.matrix = make([][]*Entity, 0)
+	for i := 0; i < s.w; i++ {
+		s.matrix = append(s.matrix, make([]*Entity, s.h))
+	}
 }
 
 func NewState(h, w int) *State {
