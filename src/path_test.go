@@ -141,6 +141,32 @@ func TestPathScore(t *testing.T) {
 				s.setByPos(NewProteinA(2, 1))
 			},
 		},
+		{
+			name: "reverse path through protein",
+			s: State{
+				w: 21,
+				h: 10,
+			},
+			from:    NewPos(8, 17),
+			to:      NewPos(6, 14),
+			exp:     5.0,
+			expFind: true,
+			fillFn: func(s *State) {
+				if s == nil {
+					return
+				}
+				s.setByPos(NewWall(10, 18))
+				s.setByPos(NewWall(9, 15))
+				s.setByPos(NewWall(10, 14))
+				s.setByPos(NewProteinA(9, 19))
+				s.setByPos(NewProteinA(8, 19))
+				s.setByPos(NewProteinA(7, 18))
+				s.setByPos(NewProteinA(6, 14))
+				s.setByPos(NewEntityMy(8, 19, RootTypeEntity))
+				s.setByPos(NewEntityMy(8, 18, HarvesterTypeEntity))
+				s.setByPos(NewEntityMy(0, 18, HarvesterTypeEntity))
+			},
+		},
 	}
 
 	for _, tc := range testCases {

@@ -39,7 +39,6 @@ func (s *State) PathFind(start, dest *Entity) *Path {
 		}
 
 		node := heap.Pop(&openNodes).(*Node)
-		// DebugMsg(">>", node.Entity.ToLog())
 
 		// If we've reached the start, then we've constructed our Path going from the destination to the start; we just have
 		// to loop through each Node and go up, adding it and its parents recursively to the path.
@@ -69,7 +68,7 @@ func (s *State) PathFind(start, dest *Entity) *Path {
 				}
 			}
 		}
-		if node.Entity.Pos.X < s.Width()-1 {
+		if node.Entity.Pos.X < s.Height()-1 {
 			if s.InMatrix(NewPos(node.Entity.Pos.X+1, node.Entity.Pos.Y)) {
 				c := s.get(node.Entity.Pos.X+1, node.Entity.Pos.Y)
 				n := &Node{c, node, c.Cost + node.Cost}
@@ -90,7 +89,7 @@ func (s *State) PathFind(start, dest *Entity) *Path {
 				}
 			}
 		}
-		if node.Entity.Pos.Y < s.Height()-1 {
+		if node.Entity.Pos.Y < s.Width()-1 {
 			if s.InMatrix(NewPos(node.Entity.Pos.X, node.Entity.Pos.Y+1)) {
 				c := s.get(node.Entity.Pos.X, node.Entity.Pos.Y+1)
 				n := &Node{c, node, c.Cost + node.Cost}

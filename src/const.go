@@ -25,5 +25,5 @@ const MaxScorePath = 9999
 const ClusterCenter = "✨"
 const MaxDepthWalking = 100
 const InitScore = 1000
-const NearestProteins = 20
+const NearestProteins = 10
 const MaxRoot = 4

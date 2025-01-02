@@ -47,7 +47,6 @@ func (s *State) PathFind(start, dest *Entity) *Path {
 		}
 
 		node := heap.Pop(&openNodes).(*Node)
-		// DebugMsg(">>", node.Entity.ToLog())
 
 		// If we've reached the start, then we've constructed our Path going from the destination to the start; we just have
 		// to loop through each Node and go up, adding it and its parents recursively to the path.
@@ -77,7 +76,7 @@ func (s *State) PathFind(start, dest *Entity) *Path {
 				}
 			}
 		}
-		if node.Entity.Pos.X < s.Width()-1 {
+		if node.Entity.Pos.X < s.Height()-1 {
 			if s.InMatrix(NewPos(node.Entity.Pos.X+1, node.Entity.Pos.Y)) {
 				c := s.get(node.Entity.Pos.X+1, node.Entity.Pos.Y)
 				n := &Node{c, node, c.Cost + node.Cost}
@@ -98,7 +97,7 @@ func (s *State) PathFind(start, dest *Entity) *Path {
 				}
 			}
 		}
-		if node.Entity.Pos.Y < s.Height()-1 {
+		if node.Entity.Pos.Y < s.Width()-1 {
 			if s.InMatrix(NewPos(node.Entity.Pos.X, node.Entity.Pos.Y+1)) {
 				c := s.get(node.Entity.Pos.X, node.Entity.Pos.Y+1)
 				n := &Node{c, node, c.Cost + node.Cost}
@@ -489,10 +488,11 @@ func (s *State) Dummy(e *Entity) bool {
 			sort.Slice(proteins, func(i, j int) bool {
 				return proteins[i].NextDistance < proteins[j].NextDistance
 			})
-			if len(proteins) > NearestProteins {
-				proteins = append(proteins[:0], proteins[:NearestProteins]...)
-			}
+			//if len(proteins) > NearestProteins {
+			//	proteins = append(proteins[:0], proteins[:NearestProteins]...)
+			//}
 			for _, protein := range proteins {
+				// DebugMsg(">>", protein.Pos.ToLog())
 				if _, ok := s.eatProtein[protein.ID()]; ok {
 					continue
 				}
@@ -530,14 +530,13 @@ func (s *State) Dummy(e *Entity) bool {
 					continue
 				}
 				s.localityOppoent[e.ID()] = e
-				free.NextDistance = 0.0
+				free.NextDistance = 0.1
 				free.CanAttack = true
 				// DebugMsg("exist opponent:", free.ToLog(), e.ToLog())
 				s.freePos[i] = free
 			}
 		}
 	}
-
 	sort.Slice(s.freePos, func(i, j int) bool {
 		return s.freePos[i].NextDistance < s.freePos[j].NextDistance
 	})
@@ -1334,6 +1333,32 @@ func TestPathScore(t *testing.T) {
 				s.setByPos(NewProteinA(2, 1))
 			},
 		},
+		{
+			name: "reverse path through protein",
+			s: State{
+				w: 21,
+				h: 10,
+			},
+			from:    NewPos(8, 17),
+			to:      NewPos(6, 14),
+			exp:     5.0,
+			expFind: true,
+			fillFn: func(s *State) {
+				if s == nil {
+					return
+				}
+				s.setByPos(NewWall(10, 18))
+				s.setByPos(NewWall(9, 15))
+				s.setByPos(NewWall(10, 14))
+				s.setByPos(NewProteinA(9, 19))
+				s.setByPos(NewProteinA(8, 19))
+				s.setByPos(NewProteinA(7, 18))
+				s.setByPos(NewProteinA(6, 14))
+				s.setByPos(NewEntityMy(8, 19, RootTypeEntity))
+				s.setByPos(NewEntityMy(8, 18, HarvesterTypeEntity))
+				s.setByPos(NewEntityMy(0, 18, HarvesterTypeEntity))
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1760,7 +1785,7 @@ func (s *State) DoAction(g *Game) {
 				continue
 			}
 		}
-		if len(s.mySporer) <= MaxRoot || len(s.myRoot) >= len(s.mySporer) {
+		if len(s.myRoot) < len(s.oppRoot) || len(s.myRoot) >= len(s.mySporer) {
 			if organs.HasSporer() && organs.HasRoot() && s.MyStock.D >= 2 {
 				clusterID := s.proteinsClusters.Nearest(e.Pos.ToCoordinates())
 				if len(s.proteinsClusters) > 0 {

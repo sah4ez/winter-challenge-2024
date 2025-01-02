@@ -62,10 +62,11 @@ func (s *State) Dummy(e *Entity) bool {
 			sort.Slice(proteins, func(i, j int) bool {
 				return proteins[i].NextDistance < proteins[j].NextDistance
 			})
-			if len(proteins) > NearestProteins {
-				proteins = append(proteins[:0], proteins[:NearestProteins]...)
-			}
+			//if len(proteins) > NearestProteins {
+			//	proteins = append(proteins[:0], proteins[:NearestProteins]...)
+			//}
 			for _, protein := range proteins {
+				// DebugMsg(">>", protein.Pos.ToLog())
 				if _, ok := s.eatProtein[protein.ID()]; ok {
 					continue
 				}
@@ -103,14 +104,13 @@ func (s *State) Dummy(e *Entity) bool {
 					continue
 				}
 				s.localityOppoent[e.ID()] = e
-				free.NextDistance = 0.0
+				free.NextDistance = 0.1
 				free.CanAttack = true
 				// DebugMsg("exist opponent:", free.ToLog(), e.ToLog())
 				s.freePos[i] = free
 			}
 		}
 	}
-
 	sort.Slice(s.freePos, func(i, j int) bool {
 		return s.freePos[i].NextDistance < s.freePos[j].NextDistance
 	})
