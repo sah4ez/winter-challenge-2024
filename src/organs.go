@@ -22,11 +22,11 @@ func (s *State) AvailableOrang() Organs {
 	if s.MyStock.B > 0 && s.MyStock.C > 0 {
 		result[TentacleTypeEntity] = struct{}{}
 	}
-	if s.MyStock.B > 0 && s.MyStock.D > 0 {
+	if s.MyStock.B > 1 && s.MyStock.D > 1 {
 		result[SporerTypeEntity] = struct{}{}
 	}
-	if s.MyStock.A > 0 && s.MyStock.B > 0 &&
-		s.MyStock.C > 0 && s.MyStock.D > 0 {
+	if s.MyStock.A > 1 && s.MyStock.B > 1 &&
+		s.MyStock.C > 1 && s.MyStock.D > 1 {
 		result[RootTypeEntity] = struct{}{}
 	}
 

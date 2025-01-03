@@ -228,6 +228,12 @@ func (s *State) DoAction(g *Game) {
 			DebugMsg("has sporer points")
 		}
 
+		if e.CanAttack {
+			if organs.HasTentacle() {
+				fmt.Println(e.GrowTentacle(s.GetTentacleDir2(e)))
+				continue
+			}
+		}
 		if len(s.mySporer) > 0 && organs.HasRoot() && g.HasSporerPoints() {
 			from, to := g.SporerPonits()
 			g.StopSporer()
@@ -301,12 +307,6 @@ func (s *State) DoAction(g *Game) {
 					fmt.Println(sporer.Spore())
 					continue
 				}
-			}
-		}
-		if e.CanAttack {
-			if organs.HasTentacle() {
-				fmt.Println(e.GrowTentacle(s.GetTentacleDir2(e)))
-				continue
 			}
 		}
 
@@ -396,8 +396,12 @@ func (s *State) Debug(full bool) {
 				if n.ClusterCenter {
 					clusterCenter = ClusterCenter
 				}
+				nType := n.Type
+				if nType == "" {
+					nType = " "
+				}
 				if full {
-					fmt.Fprintf(os.Stderr, " %c%s(%d;%d;%.2f) ", n.Type[0], clusterCenter, j, i, n.NextDistance)
+					fmt.Fprintf(os.Stderr, " %c%s(%d;%d;%.2f) ", nType[0], clusterCenter, j, i, n.Cost)
 				} else {
 					if clusterCenter == "" {
 						fmt.Fprintf(os.Stderr, " %c ", n.Type[0])
@@ -743,7 +747,7 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 		if pos != nil && pos.IsOpponent() {
 			degree := PointToAngle(e.Pos, dir)
 			dir := ""
-			total := 4
+			total := 8
 			for total >= 0 && dir == "" {
 				dir = AngleToDir(degree)
 				tentacle := *e
@@ -751,12 +755,12 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 				attackPosition := tentacle.TentacleAttackPosition()
 				total -= 1
 				if !s.InMatrix(attackPosition) {
-					degree += 90
+					degree += 45
 					dir = ""
 					continue
 				}
-				if attackEntity := s.getByPos(attackPosition); attackEntity != nil && attackEntity.IsWall() {
-					degree += 90
+				if attackEntity := s.getByPos(attackPosition); attackEntity != nil && (attackEntity.IsWall() || attackEntity.IsMy()) {
+					degree += 45
 					dir = ""
 					continue
 				}
@@ -779,7 +783,7 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 	if len(result) > 0 {
 		degree := PointToAngle(e.Pos, result[0].Pos)
 		dir := ""
-		total := 4
+		total := 8
 		for total >= 0 && dir == "" {
 			dir = AngleToDir(degree)
 			tentacle := *e
@@ -787,12 +791,12 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 			attackPosition := tentacle.TentacleAttackPosition()
 			total -= 1
 			if !s.InMatrix(attackPosition) {
-				degree += 90
+				degree += 45
 				dir = ""
 				continue
 			}
-			if attackEntity := s.getByPos(attackPosition); attackEntity != nil && attackEntity.IsWall() {
-				degree += 90
+			if attackEntity := s.getByPos(attackPosition); attackEntity != nil && (attackEntity.IsWall() || attackEntity.IsMy()) {
+				degree += 45
 				dir = ""
 				continue
 			}
@@ -819,6 +823,27 @@ func (s *State) first() *Entity {
 	result := s.nextEntity[0]
 	s.nextEntity = append(s.nextEntity[:0], s.nextEntity[1:]...)
 	return result
+}
+
+func (s *State) filterZeroDistance() []*Entity {
+
+	zero := make([]*Entity, 0)
+	if len(s.freePos) == 0 {
+		return zero
+	}
+	filtered := make([]*Entity, 0)
+	for _, e := range s.freePos {
+		if e == nil {
+			continue
+		}
+		if e.NextDistance <= 0.0 {
+			zero = append(zero, e)
+			continue
+		}
+		filtered = append(filtered, e)
+	}
+	s.freePos = append(s.freePos[:0], filtered...)
+	return zero
 }
 
 func (s *State) FreeEntites(e *Entity) bool {

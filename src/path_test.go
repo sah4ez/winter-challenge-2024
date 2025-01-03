@@ -167,6 +167,57 @@ func TestPathScore(t *testing.T) {
 				s.setByPos(NewEntityMy(0, 18, HarvesterTypeEntity))
 			},
 		},
+		{
+			name: "step to dead end",
+			s: State{
+				w: 18,
+				h: 8,
+			},
+			from:    NewPos(3, 12),
+			to:      NewPos(2, 11),
+			exp:     MaxScorePath,
+			expFind: false,
+			fillFn: func(s *State) {
+				if s == nil {
+					return
+				}
+				s.setByPos(NewWall(2, 13))
+				s.setByPos(NewWall(2, 12))
+				s.setByPos(NewWall(3, 11))
+				s.setByPos(NewWall(3, 11))
+				s.setByPos(NewWall(4, 11))
+				s.setByPos(NewWall(4, 12))
+				s.setByPos(NewProteinA(2, 11))
+				s.setByPos(NewEntityMy(3, 13, BasicType))
+				s.setByPos(NewEntityMy(4, 13, BasicType))
+			},
+		},
+		{
+			name: "one step up",
+			s: State{
+				w: 18,
+				h: 9,
+			},
+			from:    NewPos(4, 17),
+			to:      NewPos(3, 17),
+			exp:     1.0,
+			expFind: true,
+			fillFn: func(s *State) {
+				if s == nil {
+					return
+				}
+				s.setByPos(NewWall(2, 15))
+				s.setByPos(NewWall(3, 15))
+				s.setByPos(NewWall(4, 15))
+				s.setByPos(NewWall(5, 15))
+				s.setByPos(NewWall(6, 15))
+				s.setByPos(NewWall(7, 15))
+				s.setByPos(NewProteinA(3, 17))
+				s.setByPos(NewEntityMy(6, 16, RootTypeEntity))
+				s.setByPos(NewEntityMy(5, 17, RootTypeEntity))
+				s.setByPos(NewEntityMy(6, 17, BasicType))
+			},
+		},
 	}
 
 	for _, tc := range testCases {
