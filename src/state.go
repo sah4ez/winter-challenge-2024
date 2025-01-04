@@ -154,7 +154,7 @@ func (s *State) GetOrderedProtens() []*Entity {
 	result := make([]*Entity, 0)
 	order := s.MyStock.GetOrderByCountAsc()
 	for k := range hashProteins {
-		if s.MyStock.GetProduction(k) >= len(s.myRoot) {
+		if s.MyStock.GetProduction(k) > len(s.myRoot) {
 			delete(hashProteins, k)
 		}
 	}
@@ -513,7 +513,7 @@ func (s *State) GetNearProteins() []*Entity {
 			if newPos.IsMy() {
 				nearMe = true
 				e.OrganID = newPos.OrganID
-				e.Owner = newPos.Owner
+				// e.Owner = newPos.Owner
 			}
 			if newPos.IsOpponent() {
 				nearOpponent = true
@@ -694,9 +694,12 @@ func (s *State) HasNeigbourHarvester(e *Entity) bool {
 		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
 			continue
 		}
-		e := s.getByPos(pos)
-		if e != nil && e.IsHarvester() && e.IsMy() {
-			return true
+		ee := s.getByPos(pos)
+		if ee != nil && ee.IsHarvester() && ee.IsMy() {
+			havsterEatPos := ee.Pos.Shift(ee.OrganDir)
+			if e.Pos.Equal(havsterEatPos) {
+				return true
+			}
 		}
 	}
 	return false

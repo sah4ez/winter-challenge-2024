@@ -56,7 +56,7 @@ func (s *State) Dummy(e *Entity) bool {
 					continue
 				}
 				if pos1 != nil && pos1.IsProtein() && s.MyStock.GetProduction(pos1.Type) > 0 {
-					if pos2 != nil && pos2.IsOpponent() && pos2.IsTentacle() {
+					if pos2 != nil && pos2.IsOpponent() {
 						free.NeedDefend = true
 						free.DefendEntity = pos2
 						continue
@@ -107,10 +107,9 @@ func (s *State) Dummy(e *Entity) bool {
 					continue
 				}
 				cost, _ := s.PathScore(free.Pos, protein.Pos)
-				if cost >= MaxScorePath {
+				if cost >= MaxScorePath || cost == 0 {
 					continue
 				}
-				// DebugMsg(">>>", free.Pos.ToLog(), protein.Pos.ToLog(), cost)
 				// if cost == 0 {
 				// cost = free.Pos.EucleadDistance(protein.Pos)
 				// }

@@ -20,6 +20,22 @@ func (p Position) Equal(pos Position) bool {
 	return p.X == pos.X && p.Y == pos.Y
 }
 
+func (p Position) Shift(dir string) Position {
+	if dir == DirS {
+		return p.Down()
+	}
+	if dir == DirE {
+		return p.Right()
+	}
+	if dir == DirW {
+		return p.Left()
+	}
+	if dir == DirN {
+		return p.Up()
+	}
+	return Position{}
+}
+
 func (p Position) Up() Position {
 	return Position{X: p.X, Y: p.Y - 1}
 }

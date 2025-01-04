@@ -482,7 +482,7 @@ func (s *State) Dummy(e *Entity) bool {
 					continue
 				}
 				if pos1 != nil && pos1.IsProtein() && s.MyStock.GetProduction(pos1.Type) > 0 {
-					if pos2 != nil && pos2.IsOpponent() && pos2.IsTentacle() {
+					if pos2 != nil && pos2.IsOpponent() {
 						free.NeedDefend = true
 						free.DefendEntity = pos2
 						continue
@@ -533,10 +533,9 @@ func (s *State) Dummy(e *Entity) bool {
 					continue
 				}
 				cost, _ := s.PathScore(free.Pos, protein.Pos)
-				if cost >= MaxScorePath {
+				if cost >= MaxScorePath || cost == 0 {
 					continue
 				}
-				// DebugMsg(">>>", free.Pos.ToLog(), protein.Pos.ToLog(), cost)
 				// if cost == 0 {
 				// cost = free.Pos.EucleadDistance(protein.Pos)
 				// }
@@ -1495,6 +1494,22 @@ func (p Position) Equal(pos Position) bool {
 	return p.X == pos.X && p.Y == pos.Y
 }
 
+func (p Position) Shift(dir string) Position {
+	if dir == DirS {
+		return p.Down()
+	}
+	if dir == DirE {
+		return p.Right()
+	}
+	if dir == DirW {
+		return p.Left()
+	}
+	if dir == DirN {
+		return p.Up()
+	}
+	return Position{}
+}
+
 func (p Position) Up() Position {
 	return Position{X: p.X, Y: p.Y - 1}
 }
@@ -1743,7 +1758,7 @@ func (s *State) GetOrderedProtens() []*Entity {
 	result := make([]*Entity, 0)
 	order := s.MyStock.GetOrderByCountAsc()
 	for k := range hashProteins {
-		if s.MyStock.GetProduction(k) >= len(s.myRoot) {
+		if s.MyStock.GetProduction(k) > len(s.myRoot) {
 			delete(hashProteins, k)
 		}
 	}
@@ -2102,7 +2117,7 @@ func (s *State) GetNearProteins() []*Entity {
 			if newPos.IsMy() {
 				nearMe = true
 				e.OrganID = newPos.OrganID
-				e.Owner = newPos.Owner
+				// e.Owner = newPos.Owner
 			}
 			if newPos.IsOpponent() {
 				nearOpponent = true
@@ -2283,9 +2298,12 @@ func (s *State) HasNeigbourHarvester(e *Entity) bool {
 		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
 			continue
 		}
-		e := s.getByPos(pos)
-		if e != nil && e.IsHarvester() && e.IsMy() {
-			return true
+		ee := s.getByPos(pos)
+		if ee != nil && ee.IsHarvester() && ee.IsMy() {
+			havsterEatPos := ee.Pos.Shift(ee.OrganDir)
+			if e.Pos.Equal(havsterEatPos) {
+				return true
+			}
 		}
 	}
 	return false
@@ -2366,12 +2384,12 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 				attackPosition := tentacle.TentacleAttackPosition()
 				total -= 1
 				if !s.InMatrix(attackPosition) {
-					degree += 45
+					degree += 44
 					dir = ""
 					continue
 				}
 				if attackEntity := s.getByPos(attackPosition); attackEntity != nil && (attackEntity.IsWall() || attackEntity.IsMy()) {
-					degree += 45
+					degree += 44
 					dir = ""
 					continue
 				}
@@ -2402,12 +2420,12 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 			attackPosition := tentacle.TentacleAttackPosition()
 			total -= 1
 			if !s.InMatrix(attackPosition) {
-				degree += 45
+				degree += 44
 				dir = ""
 				continue
 			}
 			if attackEntity := s.getByPos(attackPosition); attackEntity != nil && (attackEntity.IsWall() || attackEntity.IsMy()) {
-				degree += 45
+				degree += 44
 				dir = ""
 				continue
 			}
