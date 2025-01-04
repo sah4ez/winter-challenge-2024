@@ -15,6 +15,8 @@ type Entity struct {
 	Cost          float64
 	Protein       *Entity
 	CanAttack     bool
+	NeedDefend    bool
+	DefendEntity  *Entity
 	ClusterCenter bool
 	SporeTo       Position
 	CanSpaces     bool
@@ -34,7 +36,7 @@ func (e *Entity) Scan() {
 		e.Cost = 50.0
 	}
 	if e.IsEmpty() {
-		e.Cost = 1.0
+		e.Cost = 10.0
 	}
 }
 

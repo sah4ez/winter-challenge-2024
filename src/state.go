@@ -23,13 +23,15 @@ type State struct {
 	entities    []*Entity
 	proteins    []*Entity
 
-	nextEntity      []*Entity
-	nextHash        map[string]*Entity
-	freePos         []*Entity
-	nearProteins    []*Entity
-	eatProtein      map[string]*Entity
-	scanOppoent     map[string]*Entity
-	localityOppoent map[string]*Entity
+	nextEntity         []*Entity
+	nextHash           map[string]*Entity
+	freePos            []*Entity
+	nearProteins       []*Entity
+	nearNotEatProteins []*Entity
+	eatProtein         map[string]*Entity
+	scanOppoent        map[string]*Entity
+	localityOppoent    map[string]*Entity
+	attackPosition     []*Entity
 
 	proteinsClusters Clusters
 	opponentClusters Clusters
@@ -198,6 +200,14 @@ func (s *State) DoAction(g *Game) {
 		return
 	}
 
+	if len(s.attackPosition) > 0 {
+		for _, e := range s.attackPosition {
+			if e != nil {
+				DebugMsg("Under attack:", e.Pos.ToLog())
+			}
+		}
+	}
+
 	rootUsed := make(map[int]struct{}, 0)
 
 	for i := 0; i < s.RequiredActionsCount; i++ {
@@ -310,9 +320,17 @@ func (s *State) DoAction(g *Game) {
 			}
 		}
 
-		if s.MyStock.CanAttack() {
+		if s.MyStock.TryAttack() && len(s.myRoot) <= len(s.mySporer) {
 			if organs.HasTentacle() {
 				fmt.Println(e.GrowTentacle(s.GetTentacleDir2(e)))
+				continue
+			}
+		}
+
+		if s.MyStock.CanDefend() {
+			if e.NeedDefend && organs.HasTentacle() && e.DefendEntity != nil {
+				degree := PointToAngle(e.Pos, e.DefendEntity.Pos)
+				fmt.Println(e.GrowTentacle(AngleToDir(degree)))
 				continue
 			}
 		}
@@ -323,8 +341,8 @@ func (s *State) DoAction(g *Game) {
 				continue
 			}
 		}
-		if len(s.myRoot) < len(s.oppRoot) || len(s.myRoot) >= len(s.mySporer) {
-			if organs.HasSporer() && organs.HasRoot() && s.MyStock.D >= 2 {
+		if len(s.myRoot) < len(s.oppRoot) {
+			if organs.HasSporer() && organs.HasRoot() && s.MyStock.D > 3 {
 				clusterID := s.proteinsClusters.Nearest(e.Pos.ToCoordinates())
 				if len(s.proteinsClusters) > 0 {
 					cluster := s.proteinsClusters[clusterID]
@@ -459,7 +477,7 @@ func (s *State) get(x, y int) (e *Entity) {
 	}
 	e = row[p.X]
 	if e == nil {
-		e = &Entity{Pos: p, Owner: -1, State: s, Cost: 1}
+		e = &Entity{Pos: p, Owner: -1, State: s, Cost: 10}
 	}
 	return e
 }
@@ -474,6 +492,7 @@ func (s *State) Height() int {
 
 func (s *State) GetNearProteins() []*Entity {
 	s.nearProteins = make([]*Entity, 0)
+	s.nearNotEatProteins = make([]*Entity, 0)
 	do := func(e *Entity) {
 		if e == nil {
 			return
@@ -499,6 +518,9 @@ func (s *State) GetNearProteins() []*Entity {
 			if newPos.IsOpponent() {
 				nearOpponent = true
 			}
+		}
+		if nearMe && !nearOpponent {
+			s.nearNotEatProteins = append(s.nearNotEatProteins, e)
 		}
 		if nearMe && nearOpponent {
 			s.nearProteins = append(s.nearProteins, e)
@@ -620,7 +642,7 @@ func (s *State) GetFreePos(organs Organs) []*Entity {
 	}
 
 	for _, e := range s.myEntities {
-		do(e, false)
+		do(e, true)
 	}
 	if len(s.freePos) == 0 {
 		for _, e := range s.myEntities {
@@ -914,6 +936,30 @@ func (s *State) FreeOppEntites(e *Entity) bool {
 			}
 		} else {
 			full = append(full, struct{}{})
+		}
+	}
+	return len(full) > 0
+}
+
+func (s *State) NearOppoent(e *Entity) bool {
+	if e == nil {
+		return false
+	}
+
+	dirs := e.Pos.GetRoseLocality()
+	full := []struct{}{}
+	for _, pos := range dirs {
+		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+			continue
+		}
+		e := s.getByPos(pos)
+		if e != nil {
+			if e.IsOpponent() && e.IsTentacle() {
+				attackPos := e.TentacleAttackPosition()
+				if e.Pos.Equal(attackPos) {
+					full = append(full, struct{}{})
+				}
+			}
 		}
 	}
 	return len(full) > 0

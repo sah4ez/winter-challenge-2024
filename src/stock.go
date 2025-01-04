@@ -93,27 +93,27 @@ func (s *Stock) IncByType(protein string) int {
 }
 
 func (s *Stock) NeedCollectProtein(protein string) bool {
-	if protein == AProteinTypeEntity {
-		return s.APerStep == 0 && s.A == 0
-	}
 	if protein == BProteinTypeEntity {
-		return s.BPerStep == 0 && s.B == 0
+		return s.BPerStep == 0
 	}
 	if protein == CProteinTypeEntity {
-		return s.CPerStep == 0 && s.C == 0
+		return s.CPerStep == 0
 	}
 	if protein == DProteinTypeEntity {
-		return s.DPerStep == 0 && s.D == 0
+		return s.DPerStep == 0
+	}
+	if protein == AProteinTypeEntity {
+		return s.APerStep == 0
 	}
 	return false
 }
 
 func (s *Stock) GetOrderByCountAsc() []string {
 	proteins := []SigleProtein{
-		{Type: AProteinTypeEntity, Count: s.A},
-		{Type: BProteinTypeEntity, Count: s.B},
-		{Type: CProteinTypeEntity, Count: s.C},
-		{Type: DProteinTypeEntity, Count: s.D},
+		{Type: AProteinTypeEntity, Count: s.A*s.APerStep + 1},
+		{Type: BProteinTypeEntity, Count: s.B * s.BPerStep},
+		{Type: CProteinTypeEntity, Count: s.C * s.CPerStep},
+		{Type: DProteinTypeEntity, Count: s.D * s.DPerStep},
 	}
 
 	sort.Slice(proteins, func(i, j int) bool {
@@ -132,6 +132,14 @@ func (s *Stock) StockProduction() string {
 
 func (s *Stock) CanAttack() bool {
 	return s.APerStep >= 2 && s.BPerStep >= 2 && s.CPerStep >= 2 && s.DPerStep >= 2
+}
+
+func (s *Stock) TryAttack() bool {
+	return s.APerStep >= 0 && s.BPerStep >= 1 && s.CPerStep >= 1 && s.DPerStep >= 0
+}
+
+func (s *Stock) CanDefend() bool {
+	return s.APerStep >= 0 && s.BPerStep >= 1 && s.CPerStep >= 1 && s.DPerStep >= 0
 }
 
 func (s *Stock) String() string {
