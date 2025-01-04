@@ -533,7 +533,8 @@ func (s *State) Dummy(e *Entity) bool {
 					continue
 				}
 				cost, _ := s.PathScore(free.Pos, protein.Pos)
-				if cost >= MaxScorePath || cost == 0 {
+				// DebugMsg("f>>:", free.ToLog(), protein.ToLog(), cost)
+				if cost >= MaxScorePath {
 					continue
 				}
 				// if cost == 0 {
@@ -2384,12 +2385,12 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 				attackPosition := tentacle.TentacleAttackPosition()
 				total -= 1
 				if !s.InMatrix(attackPosition) {
-					degree += 44
+					degree += 45
 					dir = ""
 					continue
 				}
 				if attackEntity := s.getByPos(attackPosition); attackEntity != nil && (attackEntity.IsWall() || attackEntity.IsMy()) {
-					degree += 44
+					degree += 45
 					dir = ""
 					continue
 				}
@@ -2420,12 +2421,12 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 			attackPosition := tentacle.TentacleAttackPosition()
 			total -= 1
 			if !s.InMatrix(attackPosition) {
-				degree += 44
+				degree += 45
 				dir = ""
 				continue
 			}
 			if attackEntity := s.getByPos(attackPosition); attackEntity != nil && (attackEntity.IsWall() || attackEntity.IsMy()) {
-				degree += 44
+				degree += 45
 				dir = ""
 				continue
 			}

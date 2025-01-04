@@ -107,7 +107,8 @@ func (s *State) Dummy(e *Entity) bool {
 					continue
 				}
 				cost, _ := s.PathScore(free.Pos, protein.Pos)
-				if cost >= MaxScorePath || cost == 0 {
+				// DebugMsg("f>>:", free.ToLog(), protein.ToLog(), cost)
+				if cost >= MaxScorePath {
 					continue
 				}
 				// if cost == 0 {
