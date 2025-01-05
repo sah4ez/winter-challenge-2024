@@ -472,6 +472,58 @@ func (s *State) Dummy(e *Entity) bool {
 		return false
 	}
 
+	doAttack := func(i int, free *Entity, freePos []*Entity) {
+		opponets := s.GetOrderedOpponent()
+		for _, opp := range opponets {
+			opp.NextDistance = free.Pos.EucleadDistance(opp.Pos)
+		}
+		sort.Slice(opponets, func(i, j int) bool {
+			return opponets[i].NextDistance < opponets[j].NextDistance
+		})
+		if len(opponets) > NearestOpponent {
+			opponets = append(opponets[:0], opponets[:NearestOpponent]...)
+		}
+		for _, opp := range opponets {
+			if _, ok := s.scanOppoent[opp.ID()]; ok {
+				continue
+			}
+			if !s.FreeOppEntites(opp) {
+				continue
+			}
+			canAttack := true
+			cost, _ := s.PathScore(free.Pos, opp.Pos, canAttack)
+			// DebugMsg("d>>:", free.ToLog(), opp.ToLog(), cost)
+			if cost >= MaxScorePath {
+				continue
+			}
+			if math.Abs(cost) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && cost >= 0) {
+				free.NextDistance = math.Abs(cost)
+				free.CanAttack = true
+				free.Cost = cost
+				freePos[i] = free
+			}
+			s.scanOppoent[opp.ID()] = opp
+		}
+
+		dirs := free.Pos.GetLocality()
+		for _, pos := range dirs {
+			if !s.InMatrix(pos) {
+				continue
+			}
+			e := s.getByPos(pos)
+			if e != nil && e.IsOpponent() {
+				if _, ok := s.localityOppoent[free.ID()]; ok {
+					continue
+				}
+				s.localityOppoent[e.ID()] = e
+				free.NextDistance = 0.1
+				free.CanAttack = true
+				// DebugMsg("exist opponent:", free.ToLog(), e.ToLog())
+				freePos[i] = free
+			}
+		}
+	}
+
 	do := func(i int, free *Entity, freePos []*Entity) {
 		if free != nil && !free.IsProtein() && s.NearOppoent(free) {
 			s.attackPosition = append(s.attackPosition, free)
@@ -506,21 +558,7 @@ func (s *State) Dummy(e *Entity) bool {
 			}
 		}
 		if s.MyStock.CanAttack() {
-			for _, opp := range s.oppEntities {
-				if _, ok := s.scanOppoent[opp.ID()]; ok {
-					continue
-				}
-				if !s.FreeOppEntites(opp) {
-					continue
-				}
-				newDistance := free.Pos.EucleadDistance(opp.Pos)
-				if math.Abs(newDistance) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && newDistance >= 0) {
-					free.NextDistance = math.Abs(newDistance)
-					free.CanAttack = true
-					freePos[i] = free
-				}
-				s.scanOppoent[opp.ID()] = opp
-			}
+			doAttack(i, free, freePos)
 		} else {
 			proteins := s.GetOrderedProtens()
 			for i, p := range proteins {
@@ -575,6 +613,7 @@ func (s *State) Dummy(e *Entity) bool {
 				}
 				canAttack := true
 				cost, _ := s.PathScore(free.Pos, pos, canAttack)
+				// DebugMsg("d>>:", free.ToLog(), pos.ToLog(), cost)
 				if cost > 0 && cost < MaxScorePath {
 					s.localityOppoent[e.ID()] = e
 					free.NextDistance = 0.1
@@ -582,58 +621,6 @@ func (s *State) Dummy(e *Entity) bool {
 					// DebugMsg("exist opponent:", free.ToLog(), e.ToLog())
 					freePos[i] = free
 				}
-			}
-		}
-	}
-
-	doAttack := func(i int, free *Entity, freePos []*Entity) {
-		opponets := s.GetOrderedOpponent()
-		for _, opp := range opponets {
-			opp.NextDistance = free.Pos.EucleadDistance(opp.Pos)
-		}
-		sort.Slice(opponets, func(i, j int) bool {
-			return opponets[i].NextDistance < opponets[j].NextDistance
-		})
-		if len(opponets) > NearestOpponent {
-			opponets = append(opponets[:0], opponets[:NearestOpponent]...)
-		}
-		for _, opp := range opponets {
-			if _, ok := s.scanOppoent[opp.ID()]; ok {
-				continue
-			}
-			if !s.FreeOppEntites(opp) {
-				continue
-			}
-			canAttack := true
-			cost, _ := s.PathScore(free.Pos, opp.Pos, canAttack)
-			// DebugMsg("d>>:", free.ToLog(), opp.ToLog(), cost)
-			if cost >= MaxScorePath {
-				continue
-			}
-			if math.Abs(cost) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && cost >= 0) {
-				free.NextDistance = math.Abs(cost)
-				free.CanAttack = true
-				free.Cost = cost
-				freePos[i] = free
-			}
-			s.scanOppoent[opp.ID()] = opp
-		}
-
-		dirs := free.Pos.GetLocality()
-		for _, pos := range dirs {
-			if !s.InMatrix(pos) {
-				continue
-			}
-			e := s.getByPos(pos)
-			if e != nil && e.IsOpponent() {
-				if _, ok := s.localityOppoent[free.ID()]; ok {
-					continue
-				}
-				s.localityOppoent[e.ID()] = e
-				free.NextDistance = 0.1
-				free.CanAttack = true
-				// DebugMsg("exist opponent:", free.ToLog(), e.ToLog())
-				freePos[i] = free
 			}
 		}
 	}

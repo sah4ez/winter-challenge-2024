@@ -80,10 +80,16 @@ func (s *State) Dummy(e *Entity) bool {
 				if !s.FreeOppEntites(opp) {
 					continue
 				}
+				canAttack := true
+				cost, _ := s.PathScore(free.Pos, opp.Pos, canAttack)
+				// DebugMsg("f>>:", free.ToLog(), protein.ToLog(), cost)
+				if cost >= MaxScorePath {
+					continue
+				}
 				newDistance := free.Pos.EucleadDistance(opp.Pos)
 				if math.Abs(newDistance) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && newDistance >= 0) {
 					free.NextDistance = math.Abs(newDistance)
-					free.CanAttack = true
+					free.CanAttack = canAttack
 					freePos[i] = free
 				}
 				s.scanOppoent[opp.ID()] = opp
