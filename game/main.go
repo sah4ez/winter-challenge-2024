@@ -13,7 +13,7 @@ import (
 	// "testing"
 )
 
-func (s *State) PathFind(start, dest *Entity) *Path {
+func (s *State) PathFind(start, dest *Entity, canAttack bool) *Path {
 
 	openNodes := minHeap{}
 	heap.Push(&openNodes, &Node{Entity: dest, Cost: dest.Cost})
@@ -35,8 +35,14 @@ func (s *State) PathFind(start, dest *Entity) *Path {
 		Entities: make([]*Entity, 0),
 	}
 
-	if !start.Walkable() || !dest.Walkable() {
-		return nil
+	if canAttack {
+		if !start.Walkable() || !dest.IsOpponent() {
+			return nil
+		}
+	} else {
+		if !start.Walkable() || !dest.Walkable() {
+			return nil
+		}
 	}
 
 	for {
@@ -429,6 +435,7 @@ const ClusterCenter = "✨"
 const MaxDepthWalking = 100
 const InitScore = 1000
 const NearestProteins = 10
+const NearestOpponent = 10
 const MaxRoot = 4
 
 func (s *State) Dummy(e *Entity) bool {
@@ -438,6 +445,7 @@ func (s *State) Dummy(e *Entity) bool {
 	}
 
 	s.attackPosition = make([]*Entity, 0)
+	s.scanOppoent = make(map[string]*Entity, 0)
 
 	needAttack := false
 	for _, attackOverProtein := range s.nearProteins {
@@ -532,7 +540,8 @@ func (s *State) Dummy(e *Entity) bool {
 				if s.AroundOpponet(protein) {
 					continue
 				}
-				cost, _ := s.PathScore(free.Pos, protein.Pos)
+				canAttack := false
+				cost, _ := s.PathScore(free.Pos, protein.Pos, canAttack)
 				// DebugMsg("f>>:", free.ToLog(), protein.ToLog(), cost)
 				if cost >= MaxScorePath {
 					continue
@@ -573,6 +582,58 @@ func (s *State) Dummy(e *Entity) bool {
 		}
 	}
 
+	doAttack := func(i int, free *Entity, freePos []*Entity) {
+		opponets := s.GetOrderedOpponent()
+		for _, opp := range opponets {
+			opp.NextDistance = free.Pos.EucleadDistance(opp.Pos)
+		}
+		sort.Slice(opponets, func(i, j int) bool {
+			return opponets[i].NextDistance < opponets[j].NextDistance
+		})
+		if len(opponets) > NearestOpponent {
+			opponets = append(opponets[:0], opponets[:NearestOpponent]...)
+		}
+		for _, opp := range opponets {
+			if _, ok := s.scanOppoent[opp.ID()]; ok {
+				continue
+			}
+			if !s.FreeOppEntites(opp) {
+				continue
+			}
+			canAttack := true
+			cost, _ := s.PathScore(free.Pos, opp.Pos, canAttack)
+			// DebugMsg("d>>:", free.ToLog(), opp.ToLog(), cost)
+			if cost >= MaxScorePath {
+				continue
+			}
+			if math.Abs(cost) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && cost >= 0) {
+				free.NextDistance = math.Abs(cost)
+				free.CanAttack = true
+				free.Cost = cost
+				freePos[i] = free
+			}
+			s.scanOppoent[opp.ID()] = opp
+		}
+
+		dirs := free.Pos.GetLocality()
+		for _, pos := range dirs {
+			if !s.InMatrix(pos) {
+				continue
+			}
+			e := s.getByPos(pos)
+			if e != nil && e.IsOpponent() {
+				if _, ok := s.localityOppoent[free.ID()]; ok {
+					continue
+				}
+				s.localityOppoent[e.ID()] = e
+				free.NextDistance = 0.1
+				free.CanAttack = true
+				// DebugMsg("exist opponent:", free.ToLog(), e.ToLog())
+				freePos[i] = free
+			}
+		}
+	}
+
 	for i, free := range s.freePos {
 		do(i, free, s.freePos)
 	}
@@ -585,7 +646,26 @@ func (s *State) Dummy(e *Entity) bool {
 	})
 
 	if len(s.freePos) == 0 {
-		s.freePos = append(s.freePos, s.nearNotEatProteins...)
+		s.freePos = s.GetFreePosToAttack()
+		for i, free := range s.freePos {
+			doAttack(i, free, s.freePos)
+		}
+		zero = s.filterZeroDistance()
+		sort.Slice(s.freePos, func(i, j int) bool {
+			return s.freePos[i].NextDistance < s.freePos[j].NextDistance
+		})
+		DebugMsg("attack lenght", len(zero), len(s.freePos))
+	}
+
+	if len(s.freePos) == 0 {
+		DebugMsg("emtpy steps...")
+		s.freePos = append(s.freePos, zero...)
+		for _, p := range s.nearNotEatProteins {
+			if _, ok := s.eatProtein[p.Pos.ID()]; ok {
+				continue
+			}
+			s.freePos = append(s.freePos, p)
+		}
 		zero = append(zero, s.filterZeroDistance()...)
 		sort.Slice(s.freePos, func(i, j int) bool {
 			return s.freePos[i].NextDistance < s.freePos[j].NextDistance
@@ -645,6 +725,7 @@ func (s *State) Dummy(e *Entity) bool {
 	}
 
 	if len(s.nextEntity) == 0 {
+		DebugMsg("emtpy steps...")
 		s.nextEntity = append(s.nextEntity[:0], zero...)
 	}
 
@@ -1164,14 +1245,14 @@ func (o Organs) HasHarvester() bool {
 	return ok
 }
 
-func (s *State) PathScore(from Position, to Position) (float64, bool) {
+func (s *State) PathScore(from Position, to Position, canAttack bool) (float64, bool) {
 	fromEntity := s.get(from.X, from.Y)
 	toEntity := s.get(to.X, to.Y)
-	// DebugMsg(">>>", fromEntity, toEntity)
+	// DebugMsg(">>>", fromEntity.ToLog(), toEntity.ToLog())
 
-	path := s.PathFind(fromEntity, toEntity)
+	path := s.PathFind(fromEntity, toEntity, canAttack)
 	if path == nil {
-		return 100, false
+		return 666, false
 	}
 	score := path.TotalCost()
 	found := score > 0
@@ -1247,13 +1328,14 @@ func (s *State) PathScore(from Position, to Position) (float64, bool) {
 
 func TestPathScore(t *testing.T) {
 	testCases := []struct {
-		name    string
-		s       State
-		from    Position
-		to      Position
-		exp     float64
-		expFind bool
-		fillFn  func(*State)
+		name      string
+		s         State
+		from      Position
+		to        Position
+		exp       float64
+		expFind   bool
+		canAttack bool
+		fillFn    func(*State)
 	}{
 		{
 			name: "one step right",
@@ -1263,7 +1345,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(0, 1),
-			exp:     2.0,
+			exp:     20.0,
 			expFind: true,
 		},
 		{
@@ -1274,7 +1356,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(0, 3),
-			exp:     4.0,
+			exp:     40.0,
 			expFind: true,
 		},
 		{
@@ -1285,7 +1367,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(1, 1),
-			exp:     3.0,
+			exp:     30.0,
 			expFind: true,
 		},
 		{
@@ -1296,7 +1378,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(2, 2),
-			exp:     5.0,
+			exp:     50.0,
 			expFind: true,
 		},
 		{
@@ -1307,7 +1389,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(3, 3),
-			exp:     7.0,
+			exp:     70.0,
 			expFind: true,
 		},
 		{
@@ -1318,7 +1400,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(9, 9),
-			exp:     19.0,
+			exp:     190.0,
 			expFind: true,
 		},
 		{
@@ -1329,7 +1411,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(0, 9),
-			exp:     28.0,
+			exp:     280.0,
 			expFind: true,
 			fillFn: func(s *State) {
 				if s == nil {
@@ -1373,7 +1455,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(0, 2),
-			exp:     6.0,
+			exp:     60.0,
 			expFind: true,
 			fillFn: func(s *State) {
 				if s == nil {
@@ -1392,7 +1474,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(8, 17),
 			to:      NewPos(6, 14),
-			exp:     5.0,
+			exp:     50.0,
 			expFind: true,
 			fillFn: func(s *State) {
 				if s == nil {
@@ -1443,7 +1525,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(4, 17),
 			to:      NewPos(3, 17),
-			exp:     1.0,
+			exp:     10.0,
 			expFind: true,
 			fillFn: func(s *State) {
 				if s == nil {
@@ -1461,6 +1543,26 @@ func TestPathScore(t *testing.T) {
 				s.setByPos(NewEntityMy(6, 17, BasicType))
 			},
 		},
+		{
+			name: "to attack",
+			s: State{
+				w: 3,
+				h: 3,
+			},
+			from:      NewPos(0, 0),
+			to:        NewPos(0, 2),
+			exp:       60.0,
+			expFind:   true,
+			canAttack: true,
+			fillFn: func(s *State) {
+				if s == nil {
+					return
+				}
+				s.setByPos(NewWall(0, 1))
+				s.setByPos(NewWall(1, 1))
+				s.setByPos(NewEntityOpp(0, 2, RootTypeEntity))
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1469,7 +1571,7 @@ func TestPathScore(t *testing.T) {
 			if tc.fillFn != nil {
 				tc.fillFn(&tc.s)
 			}
-			act, find := tc.s.PathScore(tc.from, tc.to)
+			act, find := tc.s.PathScore(tc.from, tc.to, tc.canAttack)
 			if act != tc.exp {
 				t.Error("unexpected score", act, tc.exp)
 			}
@@ -1767,6 +1869,33 @@ func (s *State) GetOrderedProtens() []*Entity {
 	for _, o := range order {
 		if _, ok := hashProteins[o]; ok {
 			result = append(result, hashProteins[o]...)
+		}
+	}
+
+	return result
+}
+
+func (s *State) GetOrderedOpponent() []*Entity {
+	hashOppoent := make(map[string][]*Entity, 0)
+	for _, p := range s.oppEntities {
+		if _, ok := hashOppoent[p.Type]; !ok {
+			hashOppoent[p.Type] = []*Entity{p}
+			continue
+		}
+		hashOppoent[p.Type] = append(hashOppoent[p.Type], p)
+	}
+	result := make([]*Entity, 0)
+	order := []string{
+		HarvesterTypeEntity,
+		BasicTypeEntity,
+		SporerTypeEntity,
+		RootTypeEntity,
+		TentacleTypeEntity,
+	}
+
+	for _, o := range order {
+		if _, ok := hashOppoent[o]; ok {
+			result = append(result, hashOppoent[o]...)
 		}
 	}
 
@@ -2210,7 +2339,7 @@ func (s *State) GetFreePos(organs Organs) []*Entity {
 			if newPos != nil && newPos.IsProtein() && !organs.HasHarvester() {
 				typeProtein := newPos.Type
 				if s.MyStock.NeedCollectProtein(newPos.Type) {
-					newPos = &Entity{Pos: pos}
+					newPos = &Entity{Pos: pos, Owner: -1}
 					newPos.Type = typeProtein
 					newPos.OrganID = e.OrganID
 					newPos.OrganParentID = e.OrganParentID
@@ -2223,7 +2352,7 @@ func (s *State) GetFreePos(organs Organs) []*Entity {
 				}
 			} else if newPos != nil && newPos.IsProtein() && s.ArroundMy(newPos) {
 				// typeProtein := newPos.Type
-				newPos = &Entity{Pos: pos}
+				newPos = &Entity{Pos: pos, Owner: -1}
 				newPos.OrganID = e.OrganID
 				// newPos.Type = typeProtein
 				newPos.OrganParentID = e.OrganParentID
@@ -2234,7 +2363,7 @@ func (s *State) GetFreePos(organs Organs) []*Entity {
 				}
 			}
 			if newPos == nil || (useProtein && newPos.IsProtein()) {
-				newPos = &Entity{Pos: pos}
+				newPos = &Entity{Pos: pos, Owner: -1}
 				newPos.OrganID = e.OrganID
 				newPos.OrganParentID = e.OrganParentID
 				newPos.OrganRootID = e.OrganRootID
@@ -2254,6 +2383,45 @@ func (s *State) GetFreePos(organs Organs) []*Entity {
 			do(e, true)
 		}
 		// DebugMsg(">> len free", len(s.freePos))
+	}
+
+	return s.freePos
+}
+
+func (s *State) GetFreePosToAttack() []*Entity {
+	hash := make(map[string]*Entity, 0)
+	s.freePos = make([]*Entity, 0)
+	do := func(e *Entity) {
+		if e == nil {
+			return
+		}
+		dirs := e.Pos.GetRoseLocality()
+		for _, pos := range dirs {
+			if !s.InMatrix(pos) {
+				continue
+			}
+			newPos := s.getByPos(pos)
+
+			underAttack := s.underAttack(pos)
+
+			if underAttack {
+				continue
+			}
+			if newPos == nil {
+				newPos = &Entity{Pos: pos, Owner: -1}
+				newPos.OrganID = e.OrganID
+				newPos.OrganParentID = e.OrganParentID
+				newPos.OrganRootID = e.OrganRootID
+				if _, ok := hash[newPos.ID()]; !ok {
+					s.freePos = append(s.freePos, newPos)
+					hash[newPos.ID()] = newPos
+				}
+			}
+		}
+	}
+
+	for _, e := range s.myEntities {
+		do(e)
 	}
 
 	return s.freePos
@@ -2534,7 +2702,7 @@ func (s *State) FreeOppEntites(e *Entity) bool {
 	dirs := e.Pos.GetRoseLocality()
 	full := []struct{}{}
 	for _, pos := range dirs {
-		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+		if !s.InMatrix(pos) {
 			continue
 		}
 		e := s.getByPos(pos)

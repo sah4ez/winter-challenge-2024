@@ -26,4 +26,5 @@ const ClusterCenter = "✨"
 const MaxDepthWalking = 100
 const InitScore = 1000
 const NearestProteins = 10
+const NearestOpponent = 10
 const MaxRoot = 4

@@ -1,13 +1,13 @@
 package main
 
-func (s *State) PathScore(from Position, to Position) (float64, bool) {
+func (s *State) PathScore(from Position, to Position, canAttack bool) (float64, bool) {
 	fromEntity := s.get(from.X, from.Y)
 	toEntity := s.get(to.X, to.Y)
-	// DebugMsg(">>>", fromEntity, toEntity)
+	// DebugMsg(">>>", fromEntity.ToLog(), toEntity.ToLog())
 
-	path := s.PathFind(fromEntity, toEntity)
+	path := s.PathFind(fromEntity, toEntity, canAttack)
 	if path == nil {
-		return 100, false
+		return 666, false
 	}
 	score := path.TotalCost()
 	found := score > 0

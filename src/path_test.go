@@ -4,13 +4,14 @@ import "testing"
 
 func TestPathScore(t *testing.T) {
 	testCases := []struct {
-		name    string
-		s       State
-		from    Position
-		to      Position
-		exp     float64
-		expFind bool
-		fillFn  func(*State)
+		name      string
+		s         State
+		from      Position
+		to        Position
+		exp       float64
+		expFind   bool
+		canAttack bool
+		fillFn    func(*State)
 	}{
 		{
 			name: "one step right",
@@ -20,7 +21,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(0, 1),
-			exp:     2.0,
+			exp:     20.0,
 			expFind: true,
 		},
 		{
@@ -31,7 +32,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(0, 3),
-			exp:     4.0,
+			exp:     40.0,
 			expFind: true,
 		},
 		{
@@ -42,7 +43,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(1, 1),
-			exp:     3.0,
+			exp:     30.0,
 			expFind: true,
 		},
 		{
@@ -53,7 +54,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(2, 2),
-			exp:     5.0,
+			exp:     50.0,
 			expFind: true,
 		},
 		{
@@ -64,7 +65,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(3, 3),
-			exp:     7.0,
+			exp:     70.0,
 			expFind: true,
 		},
 		{
@@ -75,7 +76,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(9, 9),
-			exp:     19.0,
+			exp:     190.0,
 			expFind: true,
 		},
 		{
@@ -86,7 +87,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(0, 9),
-			exp:     28.0,
+			exp:     280.0,
 			expFind: true,
 			fillFn: func(s *State) {
 				if s == nil {
@@ -130,7 +131,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(0, 2),
-			exp:     6.0,
+			exp:     60.0,
 			expFind: true,
 			fillFn: func(s *State) {
 				if s == nil {
@@ -149,7 +150,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(8, 17),
 			to:      NewPos(6, 14),
-			exp:     5.0,
+			exp:     50.0,
 			expFind: true,
 			fillFn: func(s *State) {
 				if s == nil {
@@ -200,7 +201,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(4, 17),
 			to:      NewPos(3, 17),
-			exp:     1.0,
+			exp:     10.0,
 			expFind: true,
 			fillFn: func(s *State) {
 				if s == nil {
@@ -218,6 +219,26 @@ func TestPathScore(t *testing.T) {
 				s.setByPos(NewEntityMy(6, 17, BasicType))
 			},
 		},
+		{
+			name: "to attack",
+			s: State{
+				w: 3,
+				h: 3,
+			},
+			from:      NewPos(0, 0),
+			to:        NewPos(0, 2),
+			exp:       60.0,
+			expFind:   true,
+			canAttack: true,
+			fillFn: func(s *State) {
+				if s == nil {
+					return
+				}
+				s.setByPos(NewWall(0, 1))
+				s.setByPos(NewWall(1, 1))
+				s.setByPos(NewEntityOpp(0, 2, RootTypeEntity))
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -226,7 +247,7 @@ func TestPathScore(t *testing.T) {
 			if tc.fillFn != nil {
 				tc.fillFn(&tc.s)
 			}
-			act, find := tc.s.PathScore(tc.from, tc.to)
+			act, find := tc.s.PathScore(tc.from, tc.to, tc.canAttack)
 			if act != tc.exp {
 				t.Error("unexpected score", act, tc.exp)
 			}

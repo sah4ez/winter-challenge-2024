@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func (s *State) PathFind(start, dest *Entity) *Path {
+func (s *State) PathFind(start, dest *Entity, canAttack bool) *Path {
 
 	openNodes := minHeap{}
 	heap.Push(&openNodes, &Node{Entity: dest, Cost: dest.Cost})
@@ -27,8 +27,14 @@ func (s *State) PathFind(start, dest *Entity) *Path {
 		Entities: make([]*Entity, 0),
 	}
 
-	if !start.Walkable() || !dest.Walkable() {
-		return nil
+	if canAttack {
+		if !start.Walkable() || !dest.IsOpponent() {
+			return nil
+		}
+	} else {
+		if !start.Walkable() || !dest.Walkable() {
+			return nil
+		}
 	}
 
 	for {

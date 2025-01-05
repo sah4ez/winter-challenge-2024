@@ -168,6 +168,33 @@ func (s *State) GetOrderedProtens() []*Entity {
 	return result
 }
 
+func (s *State) GetOrderedOpponent() []*Entity {
+	hashOppoent := make(map[string][]*Entity, 0)
+	for _, p := range s.oppEntities {
+		if _, ok := hashOppoent[p.Type]; !ok {
+			hashOppoent[p.Type] = []*Entity{p}
+			continue
+		}
+		hashOppoent[p.Type] = append(hashOppoent[p.Type], p)
+	}
+	result := make([]*Entity, 0)
+	order := []string{
+		HarvesterTypeEntity,
+		BasicTypeEntity,
+		SporerTypeEntity,
+		RootTypeEntity,
+		TentacleTypeEntity,
+	}
+
+	for _, o := range order {
+		if _, ok := hashOppoent[o]; ok {
+			result = append(result, hashOppoent[o]...)
+		}
+	}
+
+	return result
+}
+
 func (s *State) ScanStocks() {
 	s.MyStock = NewStock()
 	s.OpponentStock = NewStock()
@@ -605,7 +632,7 @@ func (s *State) GetFreePos(organs Organs) []*Entity {
 			if newPos != nil && newPos.IsProtein() && !organs.HasHarvester() {
 				typeProtein := newPos.Type
 				if s.MyStock.NeedCollectProtein(newPos.Type) {
-					newPos = &Entity{Pos: pos}
+					newPos = &Entity{Pos: pos, Owner: -1}
 					newPos.Type = typeProtein
 					newPos.OrganID = e.OrganID
 					newPos.OrganParentID = e.OrganParentID
@@ -618,7 +645,7 @@ func (s *State) GetFreePos(organs Organs) []*Entity {
 				}
 			} else if newPos != nil && newPos.IsProtein() && s.ArroundMy(newPos) {
 				// typeProtein := newPos.Type
-				newPos = &Entity{Pos: pos}
+				newPos = &Entity{Pos: pos, Owner: -1}
 				newPos.OrganID = e.OrganID
 				// newPos.Type = typeProtein
 				newPos.OrganParentID = e.OrganParentID
@@ -629,7 +656,7 @@ func (s *State) GetFreePos(organs Organs) []*Entity {
 				}
 			}
 			if newPos == nil || (useProtein && newPos.IsProtein()) {
-				newPos = &Entity{Pos: pos}
+				newPos = &Entity{Pos: pos, Owner: -1}
 				newPos.OrganID = e.OrganID
 				newPos.OrganParentID = e.OrganParentID
 				newPos.OrganRootID = e.OrganRootID
@@ -649,6 +676,45 @@ func (s *State) GetFreePos(organs Organs) []*Entity {
 			do(e, true)
 		}
 		// DebugMsg(">> len free", len(s.freePos))
+	}
+
+	return s.freePos
+}
+
+func (s *State) GetFreePosToAttack() []*Entity {
+	hash := make(map[string]*Entity, 0)
+	s.freePos = make([]*Entity, 0)
+	do := func(e *Entity) {
+		if e == nil {
+			return
+		}
+		dirs := e.Pos.GetRoseLocality()
+		for _, pos := range dirs {
+			if !s.InMatrix(pos) {
+				continue
+			}
+			newPos := s.getByPos(pos)
+
+			underAttack := s.underAttack(pos)
+
+			if underAttack {
+				continue
+			}
+			if newPos == nil {
+				newPos = &Entity{Pos: pos, Owner: -1}
+				newPos.OrganID = e.OrganID
+				newPos.OrganParentID = e.OrganParentID
+				newPos.OrganRootID = e.OrganRootID
+				if _, ok := hash[newPos.ID()]; !ok {
+					s.freePos = append(s.freePos, newPos)
+					hash[newPos.ID()] = newPos
+				}
+			}
+		}
+	}
+
+	for _, e := range s.myEntities {
+		do(e)
 	}
 
 	return s.freePos
@@ -929,7 +995,7 @@ func (s *State) FreeOppEntites(e *Entity) bool {
 	dirs := e.Pos.GetRoseLocality()
 	full := []struct{}{}
 	for _, pos := range dirs {
-		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+		if !s.InMatrix(pos) {
 			continue
 		}
 		e := s.getByPos(pos)

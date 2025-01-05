@@ -12,6 +12,7 @@ func (s *State) Dummy(e *Entity) bool {
 	}
 
 	s.attackPosition = make([]*Entity, 0)
+	s.scanOppoent = make(map[string]*Entity, 0)
 
 	needAttack := false
 	for _, attackOverProtein := range s.nearProteins {
@@ -106,7 +107,8 @@ func (s *State) Dummy(e *Entity) bool {
 				if s.AroundOpponet(protein) {
 					continue
 				}
-				cost, _ := s.PathScore(free.Pos, protein.Pos)
+				canAttack := false
+				cost, _ := s.PathScore(free.Pos, protein.Pos, canAttack)
 				// DebugMsg("f>>:", free.ToLog(), protein.ToLog(), cost)
 				if cost >= MaxScorePath {
 					continue
@@ -147,6 +149,58 @@ func (s *State) Dummy(e *Entity) bool {
 		}
 	}
 
+	doAttack := func(i int, free *Entity, freePos []*Entity) {
+		opponets := s.GetOrderedOpponent()
+		for _, opp := range opponets {
+			opp.NextDistance = free.Pos.EucleadDistance(opp.Pos)
+		}
+		sort.Slice(opponets, func(i, j int) bool {
+			return opponets[i].NextDistance < opponets[j].NextDistance
+		})
+		if len(opponets) > NearestOpponent {
+			opponets = append(opponets[:0], opponets[:NearestOpponent]...)
+		}
+		for _, opp := range opponets {
+			if _, ok := s.scanOppoent[opp.ID()]; ok {
+				continue
+			}
+			if !s.FreeOppEntites(opp) {
+				continue
+			}
+			canAttack := true
+			cost, _ := s.PathScore(free.Pos, opp.Pos, canAttack)
+			// DebugMsg("d>>:", free.ToLog(), opp.ToLog(), cost)
+			if cost >= MaxScorePath {
+				continue
+			}
+			if math.Abs(cost) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && cost >= 0) {
+				free.NextDistance = math.Abs(cost)
+				free.CanAttack = true
+				free.Cost = cost
+				freePos[i] = free
+			}
+			s.scanOppoent[opp.ID()] = opp
+		}
+
+		dirs := free.Pos.GetLocality()
+		for _, pos := range dirs {
+			if !s.InMatrix(pos) {
+				continue
+			}
+			e := s.getByPos(pos)
+			if e != nil && e.IsOpponent() {
+				if _, ok := s.localityOppoent[free.ID()]; ok {
+					continue
+				}
+				s.localityOppoent[e.ID()] = e
+				free.NextDistance = 0.1
+				free.CanAttack = true
+				// DebugMsg("exist opponent:", free.ToLog(), e.ToLog())
+				freePos[i] = free
+			}
+		}
+	}
+
 	for i, free := range s.freePos {
 		do(i, free, s.freePos)
 	}
@@ -159,7 +213,26 @@ func (s *State) Dummy(e *Entity) bool {
 	})
 
 	if len(s.freePos) == 0 {
-		s.freePos = append(s.freePos, s.nearNotEatProteins...)
+		s.freePos = s.GetFreePosToAttack()
+		for i, free := range s.freePos {
+			doAttack(i, free, s.freePos)
+		}
+		zero = s.filterZeroDistance()
+		sort.Slice(s.freePos, func(i, j int) bool {
+			return s.freePos[i].NextDistance < s.freePos[j].NextDistance
+		})
+		DebugMsg("attack lenght", len(zero), len(s.freePos))
+	}
+
+	if len(s.freePos) == 0 {
+		DebugMsg("emtpy steps...")
+		s.freePos = append(s.freePos, zero...)
+		for _, p := range s.nearNotEatProteins {
+			if _, ok := s.eatProtein[p.Pos.ID()]; ok {
+				continue
+			}
+			s.freePos = append(s.freePos, p)
+		}
 		zero = append(zero, s.filterZeroDistance()...)
 		sort.Slice(s.freePos, func(i, j int) bool {
 			return s.freePos[i].NextDistance < s.freePos[j].NextDistance
@@ -219,6 +292,7 @@ func (s *State) Dummy(e *Entity) bool {
 	}
 
 	if len(s.nextEntity) == 0 {
+		DebugMsg("emtpy steps...")
 		s.nextEntity = append(s.nextEntity[:0], zero...)
 	}
 
