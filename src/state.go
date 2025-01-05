@@ -15,13 +15,15 @@ type State struct {
 
 	matrix [][]*Entity
 
-	myEntities  []*Entity
-	mySporer    []*Entity
-	myRoot      []*Entity
-	oppEntities []*Entity
-	oppRoot     []*Entity
-	entities    []*Entity
-	proteins    []*Entity
+	myEntities []*Entity
+	mySporer   []*Entity
+	myRoot     []*Entity
+
+	myEntitiesByRoot map[int][]*Entity
+	oppEntities      []*Entity
+	oppRoot          []*Entity
+	entities         []*Entity
+	proteins         []*Entity
 
 	nextEntity         []*Entity
 	nextHash           map[string]*Entity
@@ -50,6 +52,7 @@ func (s *State) ScanEnties() {
 	s.myEntities = make([]*Entity, 0)
 	s.mySporer = make([]*Entity, 0)
 	s.myRoot = make([]*Entity, 0)
+	s.myEntitiesByRoot = make(map[int][]*Entity, 0)
 	s.oppEntities = make([]*Entity, 0)
 	s.proteins = make([]*Entity, 0)
 	s.oppRoot = make([]*Entity, 0)
@@ -78,6 +81,11 @@ func (s *State) ScanEnties() {
 			}
 			if e.IsRoot() {
 				s.myRoot = append(s.myRoot, e)
+			}
+			if _, ok := s.myEntitiesByRoot[e.OrganRootID]; ok {
+				s.myEntitiesByRoot[e.OrganRootID] = append(s.myEntitiesByRoot[e.OrganRootID], e)
+			} else {
+				s.myEntitiesByRoot[e.OrganRootID] = []*Entity{e}
 			}
 		} else if e.IsOpponent() {
 			opponentObs = append(opponentObs, e.Pos.ToCoordinates())
@@ -108,7 +116,7 @@ func (s *State) ScanEnties() {
 			proteinsObs = append(proteinsObs, p.Pos.ToCoordinates())
 		}
 		km := NewKmenas()
-		k := len(s.myRoot)
+		k := len(s.GetRootWithFreePos())
 		if k%2 != 0 {
 			k += 1
 		}
@@ -154,7 +162,7 @@ func (s *State) GetOrderedProtens() []*Entity {
 	result := make([]*Entity, 0)
 	order := s.MyStock.GetOrderByCountAsc()
 	for k := range hashProteins {
-		if s.MyStock.GetProduction(k) > len(s.myRoot) {
+		if s.MyStock.GetProduction(k) > len(s.GetRootWithFreePos()) {
 			delete(hashProteins, k)
 		}
 	}
@@ -266,6 +274,7 @@ func (s *State) DoAction(g *Game) {
 		}
 
 		if e.CanAttack {
+			DebugMsg("can attack")
 			if organs.HasTentacle() {
 				fmt.Println(e.GrowTentacle(s.GetTentacleDir2(e)))
 				continue
@@ -347,7 +356,7 @@ func (s *State) DoAction(g *Game) {
 			}
 		}
 
-		if s.MyStock.TryAttack() && len(s.myRoot) <= len(s.mySporer) {
+		if s.MyStock.TryAttack() && len(s.GetRootWithFreePos()) <= len(s.mySporer) {
 			if organs.HasTentacle() {
 				fmt.Println(e.GrowTentacle(s.GetTentacleDir2(e)))
 				continue
@@ -368,8 +377,8 @@ func (s *State) DoAction(g *Game) {
 				continue
 			}
 		}
-		if len(s.myRoot) < len(s.oppRoot) {
-			if organs.HasSporer() && organs.HasRoot() && s.MyStock.D > 3 {
+		if len(s.GetRootWithFreePos()) < len(s.oppRoot) {
+			if organs.HasSporer() && organs.HasRoot() && s.MyStock.D >= 3 {
 				cluters := s.proteinsClusters
 				clusterID := cluters.Nearest(e.Pos.ToCoordinates())
 				if len(cluters) > 0 {
@@ -1033,6 +1042,45 @@ func (s *State) NearOppoent(e *Entity) bool {
 		}
 	}
 	return len(full) > 0
+}
+
+func (s *State) GetRootWithFreePos() []*Entity {
+	result := make([]*Entity, 0)
+	for _, entities := range s.myEntitiesByRoot {
+		if len(entities) == 0 {
+			continue
+		}
+		i := 0
+		findRoot := false
+		hasFreeSpace := false
+		for !findRoot || !hasFreeSpace {
+			entity := entities[i]
+			if entity.IsRoot() {
+				findRoot = true
+			}
+			dirs := entity.Pos.GetRoseLocality()
+			for _, dir := range dirs {
+				if !s.InMatrix(dir) {
+					continue
+				}
+				e := s.getByPos(dir)
+				if e == nil {
+					hasFreeSpace = true
+				} else if e != nil && e.IsProtein() {
+					hasFreeSpace = true
+				}
+			}
+			i += 1
+			if i == len(entities) {
+				break
+			}
+		}
+		if findRoot && hasFreeSpace {
+			result = append(result, entities...)
+		}
+	}
+
+	return result
 }
 
 func (s *State) initMatrix() {

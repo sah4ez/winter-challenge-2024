@@ -140,11 +140,16 @@ func (s *State) Dummy(e *Entity) bool {
 				if _, ok := s.localityOppoent[free.ID()]; ok {
 					continue
 				}
-				s.localityOppoent[e.ID()] = e
-				free.NextDistance = 0.1
-				free.CanAttack = true
-				// DebugMsg("exist opponent:", free.ToLog(), e.ToLog())
-				freePos[i] = free
+				canAttack := true
+				cost, _ := s.PathScore(free.Pos, pos, canAttack)
+				// DebugMsg("d>>:", free.ToLog(), pos.ToLog(), cost)
+				if cost > 0 && cost < MaxScorePath {
+					s.localityOppoent[e.ID()] = e
+					free.NextDistance = 0.1
+					free.CanAttack = canAttack
+					// DebugMsg("exist opponent:", free.ToLog(), e.ToLog())
+					freePos[i] = free
+				}
 			}
 		}
 	}
