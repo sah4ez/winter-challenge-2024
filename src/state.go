@@ -114,10 +114,10 @@ func (s *State) ScanEnties() {
 		}
 		s.proteinsClusters, _ = km.Partition(proteinsObs, k)
 	}
-	// {
-	// km := NewKmenas()
-	// s.opponentClusters, _ = km.Partition(opponentObs, len(s.oppRoot))
-	// }
+	{
+		km := NewKmenas()
+		s.opponentClusters, _ = km.Partition(opponentObs, len(s.oppRoot))
+	}
 	// {
 	// km := NewKmenas()
 	// s.myClusters, _ = km.Partition(proteinsObs, len(s.myRoot))
@@ -138,7 +138,7 @@ func (s *State) ScanEnties() {
 		}
 	}
 	markCoordinates(s.proteinsClusters)
-	// markCoordinates(s.opponentClusters)
+	markCoordinates(s.opponentClusters)
 	// markCoordinates(s.myClusters)
 }
 
@@ -370,9 +370,10 @@ func (s *State) DoAction(g *Game) {
 		}
 		if len(s.myRoot) < len(s.oppRoot) {
 			if organs.HasSporer() && organs.HasRoot() && s.MyStock.D > 3 {
-				clusterID := s.proteinsClusters.Nearest(e.Pos.ToCoordinates())
-				if len(s.proteinsClusters) > 0 {
-					cluster := s.proteinsClusters[clusterID]
+				cluters := s.proteinsClusters
+				clusterID := cluters.Nearest(e.Pos.ToCoordinates())
+				if len(cluters) > 0 {
+					cluster := cluters[clusterID]
 					clusterCenter := FromCoordinates(cluster.Center.Coordinates())
 					centerEntites := s.getByPos(clusterCenter)
 					dir := s.GetSporerDir(e, clusterCenter)

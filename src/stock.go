@@ -151,6 +151,10 @@ func (s *Stock) String() string {
 	)
 }
 
+func (s *Stock) Score() int {
+	return s.A + s.B + s.C + s.D
+}
+
 func NewStock() *Stock {
 	s := &Stock{}
 	s.Scan()

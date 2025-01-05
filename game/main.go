@@ -671,10 +671,10 @@ func (s *State) Dummy(e *Entity) bool {
 			return s.freePos[i].NextDistance < s.freePos[j].NextDistance
 		})
 	}
-	if len(s.freePos) > 0 {
-		min := s.freePos[0]
+
+	fillNextEntity := func(freePos []*Entity) {
 		maxDistance := make([]struct{}, 0)
-		for _, free := range s.freePos {
+		for _, free := range freePos {
 			if free.NextDistance >= MaxScorePath {
 				maxDistance = append(maxDistance, struct{}{})
 				DebugMsg("skip cell", free.ToLog())
@@ -703,13 +703,9 @@ func (s *State) Dummy(e *Entity) bool {
 				s.nextEntity = append(s.nextEntity, free)
 				continue
 			}
-			free.OrganDir = s.GetHarvesterDir(free)
-			if free.NextDistance == 1 {
-				free.OrganDir = s.GetHarvesterDir(min)
-			}
 			s.nextEntity = append(s.nextEntity, free)
 		}
-		if len(maxDistance) >= len(s.freePos) {
+		if len(maxDistance) >= len(freePos) {
 			for _, nearProtein := range s.nearProteins {
 				if s.underAttack(nearProtein.Pos) {
 					continue
@@ -720,13 +716,42 @@ func (s *State) Dummy(e *Entity) bool {
 					s.nextEntity = append(s.nextEntity, nearProtein)
 				}
 			}
-			return false
 		}
 	}
 
+	if len(s.freePos) > 0 {
+		fillNextEntity(s.freePos)
+	}
+
 	if len(s.nextEntity) == 0 {
-		DebugMsg("emtpy steps...")
-		s.nextEntity = append(s.nextEntity[:0], zero...)
+		delta := s.MyStock.Score() - s.OpponentStock.Score()
+		if delta < 1 {
+			delta = 1
+		}
+		if len(s.myEntities)+delta == len(s.oppEntities) && s.MyStock.Score() > s.OpponentStock.Score() {
+			s.freePos = append(s.freePos, zero...)
+			s.freePos = append(s.freePos, s.proteins...)
+			for i, free := range s.freePos {
+				do(i, free, s.freePos)
+			}
+			sort.Slice(s.freePos, func(i, j int) bool {
+				return s.freePos[i].NextDistance < s.freePos[j].NextDistance
+			})
+			fillNextEntity(s.freePos)
+		} else if len(s.myEntities) == len(s.oppEntities) && s.MyStock.Score() <= s.OpponentStock.Score() {
+			s.freePos = s.proteins
+			for i, free := range s.freePos {
+				do(i, free, s.freePos)
+			}
+			sort.Slice(s.freePos, func(i, j int) bool {
+				return s.freePos[i].NextDistance < s.freePos[j].NextDistance
+			})
+			fillNextEntity(s.freePos)
+		}
+		DebugMsg("2 emtpy steps...", len(s.nextEntity))
+		if len(s.nextEntity) == 0 {
+			s.nextEntity = append(s.nextEntity, zero...)
+		}
 	}
 
 	return false
@@ -1821,10 +1846,10 @@ func (s *State) ScanEnties() {
 		}
 		s.proteinsClusters, _ = km.Partition(proteinsObs, k)
 	}
-	// {
-	// km := NewKmenas()
-	// s.opponentClusters, _ = km.Partition(opponentObs, len(s.oppRoot))
-	// }
+	{
+		km := NewKmenas()
+		s.opponentClusters, _ = km.Partition(opponentObs, len(s.oppRoot))
+	}
 	// {
 	// km := NewKmenas()
 	// s.myClusters, _ = km.Partition(proteinsObs, len(s.myRoot))
@@ -1845,7 +1870,7 @@ func (s *State) ScanEnties() {
 		}
 	}
 	markCoordinates(s.proteinsClusters)
-	// markCoordinates(s.opponentClusters)
+	markCoordinates(s.opponentClusters)
 	// markCoordinates(s.myClusters)
 }
 
@@ -2077,9 +2102,10 @@ func (s *State) DoAction(g *Game) {
 		}
 		if len(s.myRoot) < len(s.oppRoot) {
 			if organs.HasSporer() && organs.HasRoot() && s.MyStock.D > 3 {
-				clusterID := s.proteinsClusters.Nearest(e.Pos.ToCoordinates())
-				if len(s.proteinsClusters) > 0 {
-					cluster := s.proteinsClusters[clusterID]
+				cluters := s.proteinsClusters
+				clusterID := cluters.Nearest(e.Pos.ToCoordinates())
+				if len(cluters) > 0 {
+					cluster := cluters[clusterID]
 					clusterCenter := FromCoordinates(cluster.Center.Coordinates())
 					centerEntites := s.getByPos(clusterCenter)
 					dir := s.GetSporerDir(e, clusterCenter)
@@ -2917,6 +2943,10 @@ func (s *Stock) String() string {
 		s.CPerStep, s.PercentC, s.C,
 		s.DPerStep, s.PercentD, s.D,
 	)
+}
+
+func (s *Stock) Score() int {
+	return s.A + s.B + s.C + s.D
 }
 
 func NewStock() *Stock {
