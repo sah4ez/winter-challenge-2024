@@ -14,7 +14,7 @@ func main() {
 		state.ScanReqActions()
 
 		state.DoAction(game)
-		// full := false
+		// full := true
 		// state.Debug(full)
 		// DebugMsg("step: ", step)
 		// step += 1

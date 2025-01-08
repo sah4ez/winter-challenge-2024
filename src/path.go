@@ -1,17 +1,23 @@
 package main
 
-func (s *State) PathScore(from Position, to Position) (float64, bool) {
+func (s *State) PathScore(from Position, to Position, canAttack bool) (float64, bool) {
 	fromEntity := s.get(from.X, from.Y)
 	toEntity := s.get(to.X, to.Y)
-	// DebugMsg(">>>", fromEntity, toEntity)
+	// DebugMsg(">>>", fromEntity.ToLog(), toEntity.ToLog())
 
-	path := s.PathFind(fromEntity, toEntity)
-	// DebugMsg(">>>", path)
+	path := s.PathFind(fromEntity, toEntity, canAttack)
 	if path == nil {
-		return 100, false
+		return 666, false
+	}
+	score := path.TotalCost()
+	found := score > 0
+	if score == 0 {
+		// DebugMsg(">>>", fromEntity, toEntity)
+		// path.Print()
+		score = MaxScorePath
 	}
 
-	return path.TotalCost(), len(path.Entities) > 0
+	return score, found
 }
 
 //func (s *State) PathScore2(from Position, to Position, depth int, hash map[string]struct{}, score int) (int, bool) {

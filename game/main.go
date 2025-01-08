@@ -13,7 +13,7 @@ import (
 	// "testing"
 )
 
-func (s *State) PathFind(start, dest *Entity) *Path {
+func (s *State) PathFind(start, dest *Entity, canAttack bool) *Path {
 
 	openNodes := minHeap{}
 	heap.Push(&openNodes, &Node{Entity: dest, Cost: dest.Cost})
@@ -35,8 +35,14 @@ func (s *State) PathFind(start, dest *Entity) *Path {
 		Entities: make([]*Entity, 0),
 	}
 
-	if !start.Walkable() || !dest.Walkable() {
-		return nil
+	if canAttack {
+		if !start.Walkable() || !dest.IsOpponent() {
+			return nil
+		}
+	} else {
+		if !start.Walkable() || !dest.Walkable() {
+			return nil
+		}
 	}
 
 	for {
@@ -47,7 +53,6 @@ func (s *State) PathFind(start, dest *Entity) *Path {
 		}
 
 		node := heap.Pop(&openNodes).(*Node)
-		// DebugMsg(">>", node.Entity.ToLog())
 
 		// If we've reached the start, then we've constructed our Path going from the destination to the start; we just have
 		// to loop through each Node and go up, adding it and its parents recursively to the path.
@@ -77,7 +82,7 @@ func (s *State) PathFind(start, dest *Entity) *Path {
 				}
 			}
 		}
-		if node.Entity.Pos.X < s.Width()-1 {
+		if node.Entity.Pos.X < s.Height()-1 {
 			if s.InMatrix(NewPos(node.Entity.Pos.X+1, node.Entity.Pos.Y)) {
 				c := s.get(node.Entity.Pos.X+1, node.Entity.Pos.Y)
 				n := &Node{c, node, c.Cost + node.Cost}
@@ -98,7 +103,7 @@ func (s *State) PathFind(start, dest *Entity) *Path {
 				}
 			}
 		}
-		if node.Entity.Pos.Y < s.Height()-1 {
+		if node.Entity.Pos.Y < s.Width()-1 {
 			if s.InMatrix(NewPos(node.Entity.Pos.X, node.Entity.Pos.Y+1)) {
 				c := s.get(node.Entity.Pos.X, node.Entity.Pos.Y+1)
 				n := &Node{c, node, c.Cost + node.Cost}
@@ -124,10 +129,7 @@ type Path struct {
 // TotalCost returns the total cost of the Path (i.e. is the sum of all of the Cells in the Path).
 func (p *Path) TotalCost() float64 {
 
-	cost := 1.0
-	if p == nil || p.Entities == nil {
-		return 1000
-	}
+	cost := 0.0
 	for _, cell := range p.Entities {
 		cost += cell.Cost
 	}
@@ -243,6 +245,15 @@ func (p *Path) SetIndex(index int) {
 		p.CurrentIndex = index
 	}
 
+}
+
+func (p *Path) Print() {
+
+	pos := []string{}
+	for _, e := range p.Entities {
+		pos = append(pos, e.ID())
+	}
+	DebugMsg("path:", strings.Join(pos, "->"))
 }
 
 // AtStart returns if the Path's current index is 0, the first Cell in the Path.
@@ -419,15 +430,22 @@ const BProteinTypeEntity = "B"
 const CProteinTypeEntity = "C"
 const DProteinTypeEntity = "D"
 const DoNotUseEntityDistance = 9999
+const MaxScorePath = 9999
 const ClusterCenter = "✨"
 const MaxDepthWalking = 100
 const InitScore = 1000
+const NearestProteins = 10
+const NearestOpponent = 10
+const MaxRoot = 4
 
 func (s *State) Dummy(e *Entity) bool {
 
 	if len(s.freePos) == 0 {
 		return false
 	}
+
+	s.attackPosition = make([]*Entity, 0)
+	s.scanOppoent = make(map[string]*Entity, 0)
 
 	needAttack := false
 	for _, attackOverProtein := range s.nearProteins {
@@ -454,7 +472,39 @@ func (s *State) Dummy(e *Entity) bool {
 		return false
 	}
 
-	for i, free := range s.freePos {
+	do := func(i int, free *Entity, freePos []*Entity) {
+		if free != nil && !free.IsProtein() && s.NearOppoent(free) {
+			s.attackPosition = append(s.attackPosition, free)
+		}
+		if s.MyStock.CanDefend() {
+			dirs := free.Pos.Get2RoseLocality()
+			for _, dir := range dirs {
+				if len(dir) != 2 {
+					continue
+				}
+				step1 := dir[0]
+				step2 := dir[1]
+				pos1 := s.getByPos(step1)
+				pos2 := s.getByPos(step2)
+				if pos1 != nil && pos1.IsWall() {
+					continue
+				}
+				if pos1 != nil && pos1.IsProtein() && s.MyStock.GetProduction(pos1.Type) > 0 {
+					if pos2 != nil && pos2.IsOpponent() {
+						free.NeedDefend = true
+						free.DefendEntity = pos2
+						continue
+					}
+				}
+				if pos1 == nil {
+					if pos2 != nil && pos2.IsOpponent() {
+						free.NeedDefend = true
+						free.DefendEntity = pos2
+						continue
+					}
+				}
+			}
+		}
 		if s.MyStock.CanAttack() {
 			for _, opp := range s.oppEntities {
 				if _, ok := s.scanOppoent[opp.ID()]; ok {
@@ -463,39 +513,117 @@ func (s *State) Dummy(e *Entity) bool {
 				if !s.FreeOppEntites(opp) {
 					continue
 				}
+				canAttack := true
+				cost, _ := s.PathScore(free.Pos, opp.Pos, canAttack)
+				// DebugMsg("f>>:", free.ToLog(), protein.ToLog(), cost)
+				if cost >= MaxScorePath {
+					continue
+				}
 				newDistance := free.Pos.EucleadDistance(opp.Pos)
 				if math.Abs(newDistance) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && newDistance >= 0) {
-					free.NextDistance += math.Abs(newDistance)
-					free.CanAttack = true
-					s.freePos[i] = free
+					free.NextDistance = math.Abs(newDistance)
+					free.CanAttack = canAttack
+					freePos[i] = free
 				}
 				s.scanOppoent[opp.ID()] = opp
 			}
 		} else {
-			for _, protein := range s.GetOrderedProtens() {
+			proteins := s.GetOrderedProtens()
+			for i, p := range proteins {
+				p.NextDistance = free.Pos.EucleadDistance(p.Pos)
+				proteins[i] = p
+			}
+			sort.Slice(proteins, func(i, j int) bool {
+				return proteins[i].NextDistance < proteins[j].NextDistance
+			})
+			if len(proteins) > NearestProteins {
+				proteins = append(proteins[:0], proteins[:NearestProteins]...)
+			}
+			for _, protein := range proteins {
 				if _, ok := s.eatProtein[protein.ID()]; ok {
 					continue
 				}
-				//distance := free.Pos.EucleadDistance(protein.Pos)
-				//if distance > float64(s.w/4) {
-				//	// сильно далеко
-				//	continue
-				//}
-				//cost, _ := s.PathScore(free.Pos, protein.Pos)
-				//if cost == 0 {
-				//	cost = free.Pos.EucleadDistance(protein.Pos)
-				//}
-				cost := free.Pos.EucleadDistance(protein.Pos)
+				if s.AroundOpponet(protein) {
+					continue
+				}
+				canAttack := false
+				cost, _ := s.PathScore(free.Pos, protein.Pos, canAttack)
+				// DebugMsg("f>>:", free.ToLog(), protein.ToLog(), cost)
+				if cost >= MaxScorePath {
+					continue
+				}
+				// if cost == 0 {
+				// cost = free.Pos.EucleadDistance(protein.Pos)
+				// }
+				// cost := free.Pos.EucleadDistance(protein.Pos)
 				if math.Abs(cost) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && cost >= 0) {
-					free.NextDistance = math.Abs(cost) / s.MyStock.GetPercent(protein.Type)
+					if s.MyStock.NeedCollectProtein(protein.Type) {
+						free.NextDistance = math.Abs(cost)
+					} else {
+						free.NextDistance = math.Abs(cost) / s.MyStock.GetPercent(protein.Type)
+					}
 					free.Protein = protein
 					free.Cost = cost
-					s.freePos[i] = free
+					freePos[i] = free
 				}
 			}
 		}
-		if !s.FreeEntites(free) {
-			free.NextDistance += 30
+
+		dirs := free.Pos.GetLocality()
+		for _, pos := range dirs {
+			if !s.InMatrix(pos) {
+				continue
+			}
+			e := s.getByPos(pos)
+			if e != nil && e.IsOpponent() {
+				if _, ok := s.localityOppoent[free.ID()]; ok {
+					continue
+				}
+				canAttack := true
+				cost, _ := s.PathScore(free.Pos, pos, canAttack)
+				// DebugMsg("d>>:", free.ToLog(), pos.ToLog(), cost)
+				if cost > 0 && cost < MaxScorePath {
+					s.localityOppoent[e.ID()] = e
+					free.NextDistance = 0.1
+					free.CanAttack = canAttack
+					// DebugMsg("exist opponent:", free.ToLog(), e.ToLog())
+					freePos[i] = free
+				}
+			}
+		}
+	}
+
+	doAttack := func(i int, free *Entity, freePos []*Entity) {
+		opponets := s.GetOrderedOpponent()
+		for _, opp := range opponets {
+			opp.NextDistance = free.Pos.EucleadDistance(opp.Pos)
+		}
+		sort.Slice(opponets, func(i, j int) bool {
+			return opponets[i].NextDistance < opponets[j].NextDistance
+		})
+		if len(opponets) > NearestOpponent {
+			opponets = append(opponets[:0], opponets[:NearestOpponent]...)
+		}
+		for _, opp := range opponets {
+			if _, ok := s.scanOppoent[opp.ID()]; ok {
+				continue
+			}
+			if !s.FreeOppEntites(opp) {
+				continue
+			}
+			canAttack := true
+			cost, _ := s.PathScore(free.Pos, opp.Pos, canAttack)
+			// DebugMsg("d>>:", free.ToLog(), opp.ToLog(), cost)
+			if cost >= MaxScorePath {
+				continue
+			}
+			if math.Abs(cost) <= math.Abs(free.NextDistance) || (free.NextDistance == 0 && cost >= 0) {
+				free.NextDistance = math.Abs(cost)
+				free.CanAttack = true
+				free.Cost = cost
+				freePos[i] = free
+			}
+			s.scanOppoent[opp.ID()] = opp
 		}
 
 		dirs := free.Pos.GetLocality()
@@ -509,54 +637,132 @@ func (s *State) Dummy(e *Entity) bool {
 					continue
 				}
 				s.localityOppoent[e.ID()] = e
-				free.NextDistance = 0.0
+				free.NextDistance = 0.1
 				free.CanAttack = true
 				// DebugMsg("exist opponent:", free.ToLog(), e.ToLog())
-				s.freePos[i] = free
+				freePos[i] = free
 			}
 		}
 	}
 
+	for i, free := range s.freePos {
+		do(i, free, s.freePos)
+	}
+	for i, free := range s.nearNotEatProteins {
+		do(i, free, s.nearNotEatProteins)
+	}
+	zero := s.filterZeroDistance()
 	sort.Slice(s.freePos, func(i, j int) bool {
-		return s.freePos[i].NextDistance > s.freePos[j].NextDistance
+		return s.freePos[i].NextDistance < s.freePos[j].NextDistance
 	})
-	min := s.freePos[0]
-	for _, free := range s.freePos {
-		if _, ok := s.nextHash[free.ID()]; ok {
-			continue
-		}
-		if free.IsProtein() && s.MyStock.NeedCollectProtein(free.Type) {
-			free.NextDistance = 0.0
-		}
 
-		if free.Type == "" {
-			free.Type = FreeTypeEntity
+	if len(s.freePos) == 0 {
+		s.freePos = s.GetFreePosToAttack()
+		for i, free := range s.freePos {
+			doAttack(i, free, s.freePos)
 		}
-		s.matrix[free.Pos.Y][free.Pos.X] = &Entity{
-			Type:         free.Type,
-			Pos:          free.Pos,
-			NextDistance: free.NextDistance,
-			Owner:        -1,
-			CanAttack:    free.CanAttack,
-			OrganRootID:  free.OrganRootID,
+		zero = s.filterZeroDistance()
+		sort.Slice(s.freePos, func(i, j int) bool {
+			return s.freePos[i].NextDistance < s.freePos[j].NextDistance
+		})
+		DebugMsg("attack lenght", len(zero), len(s.freePos))
+	}
+
+	if len(s.freePos) == 0 {
+		DebugMsg("emtpy steps...")
+		s.freePos = append(s.freePos, zero...)
+		for _, p := range s.nearNotEatProteins {
+			if _, ok := s.eatProtein[p.Pos.ID()]; ok {
+				continue
+			}
+			s.freePos = append(s.freePos, p)
 		}
-		if free.CanAttack {
-			min = free
-			s.matrix[free.Pos.Y][free.Pos.X].Type = AttackTypeEntity
-			continue
+		zero = append(zero, s.filterZeroDistance()...)
+		sort.Slice(s.freePos, func(i, j int) bool {
+			return s.freePos[i].NextDistance < s.freePos[j].NextDistance
+		})
+	}
+
+	fillNextEntity := func(freePos []*Entity) {
+		maxDistance := make([]struct{}, 0)
+		for _, free := range freePos {
+			if free.NextDistance >= MaxScorePath {
+				maxDistance = append(maxDistance, struct{}{})
+				DebugMsg("skip cell", free.ToLog())
+			}
+			if _, ok := s.nextHash[free.ID()]; ok {
+				continue
+			}
+			if free.IsProtein() && s.MyStock.NeedCollectProtein(free.Type) {
+				free.NextDistance = 0.0
+			}
+
+			if free.Type == "" {
+				free.Type = FreeTypeEntity
+			}
+			s.matrix[free.Pos.Y][free.Pos.X] = &Entity{
+				Type:         free.Type,
+				Pos:          free.Pos,
+				NextDistance: free.NextDistance,
+				Owner:        -1,
+				CanAttack:    free.CanAttack,
+				NeedDefend:   free.NeedDefend,
+				OrganRootID:  free.OrganRootID,
+			}
+			if free.CanAttack {
+				s.matrix[free.Pos.Y][free.Pos.X].Type = AttackTypeEntity
+				s.nextEntity = append(s.nextEntity, free)
+				continue
+			}
+			s.nextEntity = append(s.nextEntity, free)
 		}
-		if min.NextDistance >= free.NextDistance {
-			min = free
-			min.OrganDir = s.GetHarvesterDir(min)
-			if min.NextDistance == 1 {
-				min.OrganDir = s.GetHarvesterDir(min)
+		if len(maxDistance) >= len(freePos) {
+			for _, nearProtein := range s.nearProteins {
+				if s.underAttack(nearProtein.Pos) {
+					continue
+				}
+				nearProtein.NextDistance = 0.0
+				if _, ok := s.nextHash[nearProtein.ID()]; !ok {
+					s.nextHash[nearProtein.ID()] = nearProtein
+					s.nextEntity = append(s.nextEntity, nearProtein)
+				}
 			}
 		}
 	}
 
-	if _, ok := s.nextHash[min.ID()]; !ok {
-		s.nextHash[min.ID()] = min
-		s.nextEntity = append(s.nextEntity, min)
+	if len(s.freePos) > 0 {
+		fillNextEntity(s.freePos)
+	}
+
+	if len(s.nextEntity) == 0 {
+		delta := s.MyStock.Score() - s.OpponentStock.Score()
+		if delta < 1 {
+			delta = 1
+		}
+		if len(s.myEntities)+delta == len(s.oppEntities) && s.MyStock.Score() > s.OpponentStock.Score() {
+			s.freePos = append(s.freePos, zero...)
+			s.freePos = append(s.freePos, s.proteins...)
+			for i, free := range s.freePos {
+				do(i, free, s.freePos)
+			}
+			sort.Slice(s.freePos, func(i, j int) bool {
+				return s.freePos[i].NextDistance < s.freePos[j].NextDistance
+			})
+			fillNextEntity(s.freePos)
+		} else if len(s.myEntities) == len(s.oppEntities) && s.MyStock.Score() <= s.OpponentStock.Score() {
+			s.freePos = s.proteins
+			for i, free := range s.freePos {
+				do(i, free, s.freePos)
+			}
+			sort.Slice(s.freePos, func(i, j int) bool {
+				return s.freePos[i].NextDistance < s.freePos[j].NextDistance
+			})
+			fillNextEntity(s.freePos)
+		}
+		DebugMsg("2 emtpy steps...", len(s.nextEntity))
+		if len(s.nextEntity) == 0 {
+			s.nextEntity = append(s.nextEntity, zero...)
+		}
 	}
 
 	return false
@@ -575,6 +781,8 @@ type Entity struct {
 	Cost          float64
 	Protein       *Entity
 	CanAttack     bool
+	NeedDefend    bool
+	DefendEntity  *Entity
 	ClusterCenter bool
 	SporeTo       Position
 	CanSpaces     bool
@@ -591,10 +799,10 @@ func (e *Entity) Scan() {
 		e.Cost = 90.0
 	}
 	if e.IsProtein() {
-		e.Cost = 10.0
+		e.Cost = 50.0
 	}
 	if e.IsEmpty() {
-		e.Cost = 1.0
+		e.Cost = 10.0
 	}
 }
 
@@ -731,6 +939,38 @@ func NewEntity() *Entity {
 
 func (e *Entity) Walkable() bool {
 	return e.IsEmpty() || e.IsFree() || e.IsProtein()
+}
+
+func NewWall(x, y int) *Entity {
+	return &Entity{
+		Pos:   Position{X: x, Y: y},
+		Owner: -1,
+		Type:  WallTypeEntity,
+	}
+}
+
+func NewProteinA(x, y int) *Entity {
+	return &Entity{
+		Pos:   Position{X: x, Y: y},
+		Owner: -1,
+		Type:  AProteinTypeEntity,
+	}
+}
+
+func NewEntityMy(x, y int, etype string) *Entity {
+	return &Entity{
+		Pos:   Position{X: x, Y: y},
+		Owner: 1,
+		Type:  etype,
+	}
+}
+
+func NewEntityOpp(x, y int, etype string) *Entity {
+	return &Entity{
+		Pos:   Position{X: x, Y: y},
+		Owner: 0,
+		Type:  etype,
+	}
 }
 
 type Game struct {
@@ -907,7 +1147,7 @@ func main() {
 		state.ScanReqActions()
 
 		state.DoAction(game)
-		// full := false
+		// full := true
 		// state.Debug(full)
 		// DebugMsg("step: ", step)
 		// step += 1
@@ -1005,11 +1245,11 @@ func (s *State) AvailableOrang() Organs {
 	if s.MyStock.B > 0 && s.MyStock.C > 0 {
 		result[TentacleTypeEntity] = struct{}{}
 	}
-	if s.MyStock.B > 0 && s.MyStock.D > 0 {
+	if s.MyStock.B > 1 && s.MyStock.D > 1 {
 		result[SporerTypeEntity] = struct{}{}
 	}
-	if s.MyStock.A > 0 && s.MyStock.B > 0 &&
-		s.MyStock.C > 0 && s.MyStock.D > 0 {
+	if s.MyStock.A > 1 && s.MyStock.B > 1 &&
+		s.MyStock.C > 1 && s.MyStock.D > 1 {
 		result[RootTypeEntity] = struct{}{}
 	}
 
@@ -1041,18 +1281,24 @@ func (o Organs) HasHarvester() bool {
 	return ok
 }
 
-func (s *State) PathScore(from Position, to Position) (float64, bool) {
+func (s *State) PathScore(from Position, to Position, canAttack bool) (float64, bool) {
 	fromEntity := s.get(from.X, from.Y)
 	toEntity := s.get(to.X, to.Y)
-	// DebugMsg(">>>", fromEntity, toEntity)
+	// DebugMsg(">>>", fromEntity.ToLog(), toEntity.ToLog())
 
-	path := s.PathFind(fromEntity, toEntity)
-	// DebugMsg(">>>", path)
+	path := s.PathFind(fromEntity, toEntity, canAttack)
 	if path == nil {
-		return 100, false
+		return 666, false
+	}
+	score := path.TotalCost()
+	found := score > 0
+	if score == 0 {
+		// DebugMsg(">>>", fromEntity, toEntity)
+		// path.Print()
+		score = MaxScorePath
 	}
 
-	return path.TotalCost(), len(path.Entities) > 0
+	return score, found
 }
 
 //func (s *State) PathScore2(from Position, to Position, depth int, hash map[string]struct{}, score int) (int, bool) {
@@ -1118,12 +1364,14 @@ func (s *State) PathScore(from Position, to Position) (float64, bool) {
 
 func TestPathScore(t *testing.T) {
 	testCases := []struct {
-		name    string
-		s       State
-		from    Position
-		to      Position
-		exp     float64
-		expFind bool
+		name      string
+		s         State
+		from      Position
+		to        Position
+		exp       float64
+		expFind   bool
+		canAttack bool
+		fillFn    func(*State)
 	}{
 		{
 			name: "one step right",
@@ -1133,7 +1381,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(0, 1),
-			exp:     1.0,
+			exp:     20.0,
 			expFind: true,
 		},
 		{
@@ -1144,7 +1392,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(0, 3),
-			exp:     3.0,
+			exp:     40.0,
 			expFind: true,
 		},
 		{
@@ -1155,7 +1403,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(1, 1),
-			exp:     2.0,
+			exp:     30.0,
 			expFind: true,
 		},
 		{
@@ -1166,7 +1414,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(2, 2),
-			exp:     4.0,
+			exp:     50.0,
 			expFind: true,
 		},
 		{
@@ -1177,7 +1425,7 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(3, 3),
-			exp:     6.0,
+			exp:     70.0,
 			expFind: true,
 		},
 		{
@@ -1188,26 +1436,178 @@ func TestPathScore(t *testing.T) {
 			},
 			from:    NewPos(0, 0),
 			to:      NewPos(9, 9),
-			exp:     18.0,
+			exp:     190.0,
 			expFind: true,
 		},
 		{
-			name: "9 step by diagonal",
+			name: "9 step by diagonal and wall",
 			s: State{
 				w: 10,
 				h: 10,
 			},
 			from:    NewPos(0, 0),
-			to:      NewPos(9, 9),
-			exp:     18.0,
+			to:      NewPos(0, 9),
+			exp:     280.0,
 			expFind: true,
+			fillFn: func(s *State) {
+				if s == nil {
+					return
+				}
+				s.setByPos(NewWall(0, 5))
+				s.setByPos(NewWall(1, 5))
+				s.setByPos(NewWall(2, 5))
+				s.setByPos(NewWall(3, 5))
+				s.setByPos(NewWall(4, 5))
+				s.setByPos(NewWall(5, 5))
+				s.setByPos(NewWall(6, 5))
+				s.setByPos(NewWall(7, 5))
+				s.setByPos(NewWall(8, 5))
+			},
+		},
+		{
+			name: "no path",
+			s: State{
+				w: 3,
+				h: 3,
+			},
+			from:    NewPos(0, 0),
+			to:      NewPos(0, 2),
+			exp:     MaxScorePath,
+			expFind: false,
+			fillFn: func(s *State) {
+				if s == nil {
+					return
+				}
+				s.setByPos(NewWall(0, 1))
+				s.setByPos(NewWall(1, 1))
+				s.setByPos(NewWall(2, 1))
+			},
+		},
+		{
+			name: "path through protein",
+			s: State{
+				w: 3,
+				h: 3,
+			},
+			from:    NewPos(0, 0),
+			to:      NewPos(0, 2),
+			exp:     60.0,
+			expFind: true,
+			fillFn: func(s *State) {
+				if s == nil {
+					return
+				}
+				s.setByPos(NewWall(0, 1))
+				s.setByPos(NewWall(1, 1))
+				s.setByPos(NewProteinA(2, 1))
+			},
+		},
+		{
+			name: "reverse path through protein",
+			s: State{
+				w: 21,
+				h: 10,
+			},
+			from:    NewPos(8, 17),
+			to:      NewPos(6, 14),
+			exp:     50.0,
+			expFind: true,
+			fillFn: func(s *State) {
+				if s == nil {
+					return
+				}
+				s.setByPos(NewWall(10, 18))
+				s.setByPos(NewWall(9, 15))
+				s.setByPos(NewWall(10, 14))
+				s.setByPos(NewProteinA(9, 19))
+				s.setByPos(NewProteinA(8, 19))
+				s.setByPos(NewProteinA(7, 18))
+				s.setByPos(NewProteinA(6, 14))
+				s.setByPos(NewEntityMy(8, 19, RootTypeEntity))
+				s.setByPos(NewEntityMy(8, 18, HarvesterTypeEntity))
+				s.setByPos(NewEntityMy(0, 18, HarvesterTypeEntity))
+			},
+		},
+		{
+			name: "step to dead end",
+			s: State{
+				w: 18,
+				h: 8,
+			},
+			from:    NewPos(3, 12),
+			to:      NewPos(2, 11),
+			exp:     MaxScorePath,
+			expFind: false,
+			fillFn: func(s *State) {
+				if s == nil {
+					return
+				}
+				s.setByPos(NewWall(2, 13))
+				s.setByPos(NewWall(2, 12))
+				s.setByPos(NewWall(3, 11))
+				s.setByPos(NewWall(3, 11))
+				s.setByPos(NewWall(4, 11))
+				s.setByPos(NewWall(4, 12))
+				s.setByPos(NewProteinA(2, 11))
+				s.setByPos(NewEntityMy(3, 13, BasicType))
+				s.setByPos(NewEntityMy(4, 13, BasicType))
+			},
+		},
+		{
+			name: "one step up",
+			s: State{
+				w: 18,
+				h: 9,
+			},
+			from:    NewPos(4, 17),
+			to:      NewPos(3, 17),
+			exp:     10.0,
+			expFind: true,
+			fillFn: func(s *State) {
+				if s == nil {
+					return
+				}
+				s.setByPos(NewWall(2, 15))
+				s.setByPos(NewWall(3, 15))
+				s.setByPos(NewWall(4, 15))
+				s.setByPos(NewWall(5, 15))
+				s.setByPos(NewWall(6, 15))
+				s.setByPos(NewWall(7, 15))
+				s.setByPos(NewProteinA(3, 17))
+				s.setByPos(NewEntityMy(6, 16, RootTypeEntity))
+				s.setByPos(NewEntityMy(5, 17, RootTypeEntity))
+				s.setByPos(NewEntityMy(6, 17, BasicType))
+			},
+		},
+		{
+			name: "to attack",
+			s: State{
+				w: 3,
+				h: 3,
+			},
+			from:      NewPos(0, 0),
+			to:        NewPos(0, 2),
+			exp:       60.0,
+			expFind:   true,
+			canAttack: true,
+			fillFn: func(s *State) {
+				if s == nil {
+					return
+				}
+				s.setByPos(NewWall(0, 1))
+				s.setByPos(NewWall(1, 1))
+				s.setByPos(NewEntityOpp(0, 2, RootTypeEntity))
+			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name+":"+tc.from.ToLog()+"->"+tc.to.ToLog(), func(t *testing.T) {
 			tc.s.initMatrix()
-			act, find := tc.s.PathScore(tc.from, tc.to)
+			if tc.fillFn != nil {
+				tc.fillFn(&tc.s)
+			}
+			act, find := tc.s.PathScore(tc.from, tc.to, tc.canAttack)
 			if act != tc.exp {
 				t.Error("unexpected score", act, tc.exp)
 			}
@@ -1233,6 +1633,22 @@ func (p Position) Equal(pos Position) bool {
 	return p.X == pos.X && p.Y == pos.Y
 }
 
+func (p Position) Shift(dir string) Position {
+	if dir == DirS {
+		return p.Down()
+	}
+	if dir == DirE {
+		return p.Right()
+	}
+	if dir == DirW {
+		return p.Left()
+	}
+	if dir == DirN {
+		return p.Up()
+	}
+	return Position{}
+}
+
 func (p Position) Up() Position {
 	return Position{X: p.X, Y: p.Y - 1}
 }
@@ -1247,6 +1663,22 @@ func (p Position) Left() Position {
 
 func (p Position) Right() Position {
 	return Position{X: p.X + 1, Y: p.Y}
+}
+
+func (p Position) Up2() Position {
+	return Position{X: p.X, Y: p.Y - 2}
+}
+
+func (p Position) Down2() Position {
+	return Position{X: p.X, Y: p.Y + 2}
+}
+
+func (p Position) Left2() Position {
+	return Position{X: p.X - 2, Y: p.Y}
+}
+
+func (p Position) Right2() Position {
+	return Position{X: p.X + 2, Y: p.Y}
 }
 
 func (p Position) GetLocality() []Position {
@@ -1268,6 +1700,15 @@ func (p Position) GetRoseLocality() []Position {
 		p.Down(),
 		p.Left(),
 		p.Right(),
+	}
+}
+
+func (p Position) Get2RoseLocality() [][]Position {
+	return [][]Position{
+		[]Position{p.Up(), p.Up2()},
+		[]Position{p.Down(), p.Down2()},
+		[]Position{p.Left(), p.Left2()},
+		[]Position{p.Right(), p.Right2()},
 	}
 }
 
@@ -1317,21 +1758,25 @@ type State struct {
 
 	matrix [][]*Entity
 
-	myEntities  []*Entity
-	mySporer    []*Entity
-	myRoot      []*Entity
-	oppEntities []*Entity
-	oppRoot     []*Entity
-	entities    []*Entity
-	proteins    []*Entity
+	myEntities []*Entity
+	mySporer   []*Entity
+	myRoot     []*Entity
 
-	nextEntity      []*Entity
-	nextHash        map[string]*Entity
-	freePos         []*Entity
-	nearProteins    []*Entity
-	eatProtein      map[string]*Entity
-	scanOppoent     map[string]*Entity
-	localityOppoent map[string]*Entity
+	myEntitiesByRoot map[int][]*Entity
+	oppEntities      []*Entity
+	oppRoot          []*Entity
+	entities         []*Entity
+	proteins         []*Entity
+
+	nextEntity         []*Entity
+	nextHash           map[string]*Entity
+	freePos            []*Entity
+	nearProteins       []*Entity
+	nearNotEatProteins []*Entity
+	eatProtein         map[string]*Entity
+	scanOppoent        map[string]*Entity
+	localityOppoent    map[string]*Entity
+	attackPosition     []*Entity
 
 	proteinsClusters Clusters
 	opponentClusters Clusters
@@ -1350,6 +1795,7 @@ func (s *State) ScanEnties() {
 	s.myEntities = make([]*Entity, 0)
 	s.mySporer = make([]*Entity, 0)
 	s.myRoot = make([]*Entity, 0)
+	s.myEntitiesByRoot = make(map[int][]*Entity, 0)
 	s.oppEntities = make([]*Entity, 0)
 	s.proteins = make([]*Entity, 0)
 	s.oppRoot = make([]*Entity, 0)
@@ -1378,6 +1824,11 @@ func (s *State) ScanEnties() {
 			}
 			if e.IsRoot() {
 				s.myRoot = append(s.myRoot, e)
+			}
+			if _, ok := s.myEntitiesByRoot[e.OrganRootID]; ok {
+				s.myEntitiesByRoot[e.OrganRootID] = append(s.myEntitiesByRoot[e.OrganRootID], e)
+			} else {
+				s.myEntitiesByRoot[e.OrganRootID] = []*Entity{e}
 			}
 		} else if e.IsOpponent() {
 			opponentObs = append(opponentObs, e.Pos.ToCoordinates())
@@ -1408,16 +1859,16 @@ func (s *State) ScanEnties() {
 			proteinsObs = append(proteinsObs, p.Pos.ToCoordinates())
 		}
 		km := NewKmenas()
-		k := len(s.myRoot)
+		k := len(s.GetRootWithFreePos())
 		if k%2 != 0 {
 			k += 1
 		}
 		s.proteinsClusters, _ = km.Partition(proteinsObs, k)
 	}
-	// {
-	// km := NewKmenas()
-	// s.opponentClusters, _ = km.Partition(opponentObs, len(s.oppRoot))
-	// }
+	{
+		km := NewKmenas()
+		s.opponentClusters, _ = km.Partition(opponentObs, len(s.oppRoot))
+	}
 	// {
 	// km := NewKmenas()
 	// s.myClusters, _ = km.Partition(proteinsObs, len(s.myRoot))
@@ -1438,7 +1889,7 @@ func (s *State) ScanEnties() {
 		}
 	}
 	markCoordinates(s.proteinsClusters)
-	// markCoordinates(s.opponentClusters)
+	markCoordinates(s.opponentClusters)
 	// markCoordinates(s.myClusters)
 }
 
@@ -1454,7 +1905,7 @@ func (s *State) GetOrderedProtens() []*Entity {
 	result := make([]*Entity, 0)
 	order := s.MyStock.GetOrderByCountAsc()
 	for k := range hashProteins {
-		if s.MyStock.GetProduction(k) >= len(s.myRoot) {
+		if s.MyStock.GetProduction(k) > len(s.GetRootWithFreePos()) {
 			delete(hashProteins, k)
 		}
 	}
@@ -1462,6 +1913,33 @@ func (s *State) GetOrderedProtens() []*Entity {
 	for _, o := range order {
 		if _, ok := hashProteins[o]; ok {
 			result = append(result, hashProteins[o]...)
+		}
+	}
+
+	return result
+}
+
+func (s *State) GetOrderedOpponent() []*Entity {
+	hashOppoent := make(map[string][]*Entity, 0)
+	for _, p := range s.oppEntities {
+		if _, ok := hashOppoent[p.Type]; !ok {
+			hashOppoent[p.Type] = []*Entity{p}
+			continue
+		}
+		hashOppoent[p.Type] = append(hashOppoent[p.Type], p)
+	}
+	result := make([]*Entity, 0)
+	order := []string{
+		HarvesterTypeEntity,
+		BasicTypeEntity,
+		SporerTypeEntity,
+		RootTypeEntity,
+		TentacleTypeEntity,
+	}
+
+	for _, o := range order {
+		if _, ok := hashOppoent[o]; ok {
+			result = append(result, hashOppoent[o]...)
 		}
 	}
 
@@ -1485,11 +1963,9 @@ func (s *State) ScanReqActions() {
 
 func (s *State) DoAction(g *Game) {
 	organs := s.AvailableOrang()
-	for i := 0; i < s.RequiredActionsCount; i++ {
-		_ = s.GetFreePos(organs)
-		_ = s.GetNearProteins()
-		s.walk(0, 0, s.Dummy)
-	}
+	_ = s.GetFreePos(organs)
+	_ = s.GetNearProteins()
+	s.Dummy(nil)
 	for _, e := range s.nextEntity {
 		DebugMsg(">>>", e.ToLog())
 	}
@@ -1500,6 +1976,14 @@ func (s *State) DoAction(g *Game) {
 			fmt.Println("WAIT") // Write action to stdout
 		}
 		return
+	}
+
+	if len(s.attackPosition) > 0 {
+		for _, e := range s.attackPosition {
+			if e != nil {
+				DebugMsg("Under attack:", e.Pos.ToLog())
+			}
+		}
 	}
 
 	rootUsed := make(map[int]struct{}, 0)
@@ -1532,6 +2016,13 @@ func (s *State) DoAction(g *Game) {
 			DebugMsg("has sporer points")
 		}
 
+		if e.CanAttack {
+			DebugMsg("can attack")
+			if organs.HasTentacle() {
+				fmt.Println(e.GrowTentacle(s.GetTentacleDir2(e)))
+				continue
+			}
+		}
 		if len(s.mySporer) > 0 && organs.HasRoot() && g.HasSporerPoints() {
 			from, to := g.SporerPonits()
 			g.StopSporer()
@@ -1607,16 +2098,18 @@ func (s *State) DoAction(g *Game) {
 				}
 			}
 		}
-		if e.CanAttack {
+
+		if s.MyStock.TryAttack() && len(s.GetRootWithFreePos()) <= len(s.mySporer) {
 			if organs.HasTentacle() {
 				fmt.Println(e.GrowTentacle(s.GetTentacleDir2(e)))
 				continue
 			}
 		}
 
-		if s.MyStock.CanAttack() {
-			if organs.HasTentacle() {
-				fmt.Println(e.GrowTentacle(s.GetTentacleDir2(e)))
+		if s.MyStock.CanDefend() {
+			if e.NeedDefend && organs.HasTentacle() && e.DefendEntity != nil {
+				degree := PointToAngle(e.Pos, e.DefendEntity.Pos)
+				fmt.Println(e.GrowTentacle(AngleToDir(degree)))
 				continue
 			}
 		}
@@ -1627,11 +2120,12 @@ func (s *State) DoAction(g *Game) {
 				continue
 			}
 		}
-		if len(s.mySporer) == 0 || len(s.myRoot) == len(s.mySporer) {
-			if organs.HasSporer() && organs.HasRoot() && s.MyStock.D >= 2 {
-				clusterID := s.proteinsClusters.Nearest(e.Pos.ToCoordinates())
-				if len(s.proteinsClusters) > 0 {
-					cluster := s.proteinsClusters[clusterID]
+		if len(s.GetRootWithFreePos()) < len(s.oppRoot) {
+			if organs.HasSporer() && organs.HasRoot() && s.MyStock.D >= 3 {
+				cluters := s.proteinsClusters
+				clusterID := cluters.Nearest(e.Pos.ToCoordinates())
+				if len(cluters) > 0 {
+					cluster := cluters[clusterID]
 					clusterCenter := FromCoordinates(cluster.Center.Coordinates())
 					centerEntites := s.getByPos(clusterCenter)
 					dir := s.GetSporerDir(e, clusterCenter)
@@ -1700,8 +2194,12 @@ func (s *State) Debug(full bool) {
 				if n.ClusterCenter {
 					clusterCenter = ClusterCenter
 				}
+				nType := n.Type
+				if nType == "" {
+					nType = " "
+				}
 				if full {
-					fmt.Fprintf(os.Stderr, " %c%s(%d;%d;%.2f) ", n.Type[0], clusterCenter, j, i, n.NextDistance)
+					fmt.Fprintf(os.Stderr, " %c%s(%d;%d;%.2f) ", nType[0], clusterCenter, j, i, n.Cost)
 				} else {
 					if clusterCenter == "" {
 						fmt.Fprintf(os.Stderr, " %c ", n.Type[0])
@@ -1731,11 +2229,21 @@ func (s *State) getByPos(p Position) (e *Entity) {
 		return nil
 	}
 	return row[p.X]
-	//e = row[p.X]
-	//if e == nil {
-	//	e = &Entity{Pos: p, Owner: -1, State: s}
-	//}
-	//return e
+}
+
+func (s *State) setByPos(e *Entity) {
+	if e == nil {
+		return
+	}
+	p := e.Pos
+	if p.Y >= len(s.matrix) || p.Y < 0 {
+		return
+	}
+	row := s.matrix[p.Y]
+	if p.X >= len(row) || p.X < 0 {
+		return
+	}
+	s.matrix[p.Y][p.X] = e
 }
 
 func (s *State) get(x, y int) (e *Entity) {
@@ -1749,7 +2257,7 @@ func (s *State) get(x, y int) (e *Entity) {
 	}
 	e = row[p.X]
 	if e == nil {
-		e = &Entity{Pos: p, Owner: -1, State: s, Cost: 1}
+		e = &Entity{Pos: p, Owner: -1, State: s, Cost: 10}
 	}
 	return e
 }
@@ -1764,6 +2272,7 @@ func (s *State) Height() int {
 
 func (s *State) GetNearProteins() []*Entity {
 	s.nearProteins = make([]*Entity, 0)
+	s.nearNotEatProteins = make([]*Entity, 0)
 	do := func(e *Entity) {
 		if e == nil {
 			return
@@ -1784,11 +2293,14 @@ func (s *State) GetNearProteins() []*Entity {
 			if newPos.IsMy() {
 				nearMe = true
 				e.OrganID = newPos.OrganID
-				e.Owner = newPos.Owner
+				// e.Owner = newPos.Owner
 			}
 			if newPos.IsOpponent() {
 				nearOpponent = true
 			}
+		}
+		if nearMe && !nearOpponent {
+			s.nearNotEatProteins = append(s.nearNotEatProteins, e)
 		}
 		if nearMe && nearOpponent {
 			s.nearProteins = append(s.nearProteins, e)
@@ -1873,7 +2385,7 @@ func (s *State) GetFreePos(organs Organs) []*Entity {
 			if newPos != nil && newPos.IsProtein() && !organs.HasHarvester() {
 				typeProtein := newPos.Type
 				if s.MyStock.NeedCollectProtein(newPos.Type) {
-					newPos = &Entity{Pos: pos}
+					newPos = &Entity{Pos: pos, Owner: -1}
 					newPos.Type = typeProtein
 					newPos.OrganID = e.OrganID
 					newPos.OrganParentID = e.OrganParentID
@@ -1886,7 +2398,7 @@ func (s *State) GetFreePos(organs Organs) []*Entity {
 				}
 			} else if newPos != nil && newPos.IsProtein() && s.ArroundMy(newPos) {
 				// typeProtein := newPos.Type
-				newPos = &Entity{Pos: pos}
+				newPos = &Entity{Pos: pos, Owner: -1}
 				newPos.OrganID = e.OrganID
 				// newPos.Type = typeProtein
 				newPos.OrganParentID = e.OrganParentID
@@ -1897,7 +2409,7 @@ func (s *State) GetFreePos(organs Organs) []*Entity {
 				}
 			}
 			if newPos == nil || (useProtein && newPos.IsProtein()) {
-				newPos = &Entity{Pos: pos}
+				newPos = &Entity{Pos: pos, Owner: -1}
 				newPos.OrganID = e.OrganID
 				newPos.OrganParentID = e.OrganParentID
 				newPos.OrganRootID = e.OrganRootID
@@ -1910,13 +2422,52 @@ func (s *State) GetFreePos(organs Organs) []*Entity {
 	}
 
 	for _, e := range s.myEntities {
-		do(e, false)
+		do(e, true)
 	}
 	if len(s.freePos) == 0 {
 		for _, e := range s.myEntities {
 			do(e, true)
 		}
 		// DebugMsg(">> len free", len(s.freePos))
+	}
+
+	return s.freePos
+}
+
+func (s *State) GetFreePosToAttack() []*Entity {
+	hash := make(map[string]*Entity, 0)
+	s.freePos = make([]*Entity, 0)
+	do := func(e *Entity) {
+		if e == nil {
+			return
+		}
+		dirs := e.Pos.GetRoseLocality()
+		for _, pos := range dirs {
+			if !s.InMatrix(pos) {
+				continue
+			}
+			newPos := s.getByPos(pos)
+
+			underAttack := s.underAttack(pos)
+
+			if underAttack {
+				continue
+			}
+			if newPos == nil {
+				newPos = &Entity{Pos: pos, Owner: -1}
+				newPos.OrganID = e.OrganID
+				newPos.OrganParentID = e.OrganParentID
+				newPos.OrganRootID = e.OrganRootID
+				if _, ok := hash[newPos.ID()]; !ok {
+					s.freePos = append(s.freePos, newPos)
+					hash[newPos.ID()] = newPos
+				}
+			}
+		}
+	}
+
+	for _, e := range s.myEntities {
+		do(e)
 	}
 
 	return s.freePos
@@ -1962,9 +2513,12 @@ func (s *State) HasNeigbourHarvester(e *Entity) bool {
 		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
 			continue
 		}
-		e := s.getByPos(pos)
-		if e != nil && e.IsHarvester() && e.IsMy() {
-			return true
+		ee := s.getByPos(pos)
+		if ee != nil && ee.IsHarvester() && ee.IsMy() {
+			havsterEatPos := ee.Pos.Shift(ee.OrganDir)
+			if e.Pos.Equal(havsterEatPos) {
+				return true
+			}
 		}
 	}
 	return false
@@ -2017,7 +2571,7 @@ func (s *State) AroundOpponet(e *Entity) bool {
 			continue
 		}
 		e := s.getByPos(pos)
-		if e != nil && !e.IsWall() || !e.IsOpponent() {
+		if e != nil && (!e.IsWall() || !e.IsOpponent()) {
 			return false
 		}
 	}
@@ -2037,7 +2591,7 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 		if pos != nil && pos.IsOpponent() {
 			degree := PointToAngle(e.Pos, dir)
 			dir := ""
-			total := 4
+			total := 8
 			for total >= 0 && dir == "" {
 				dir = AngleToDir(degree)
 				tentacle := *e
@@ -2045,12 +2599,12 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 				attackPosition := tentacle.TentacleAttackPosition()
 				total -= 1
 				if !s.InMatrix(attackPosition) {
-					degree += 90
+					degree += 45
 					dir = ""
 					continue
 				}
-				if attackEntity := s.getByPos(attackPosition); attackEntity != nil && attackEntity.IsWall() {
-					degree += 90
+				if attackEntity := s.getByPos(attackPosition); attackEntity != nil && (attackEntity.IsWall() || attackEntity.IsMy()) {
+					degree += 45
 					dir = ""
 					continue
 				}
@@ -2073,21 +2627,20 @@ func (s *State) GetTentacleDir2(e *Entity) string {
 	if len(result) > 0 {
 		degree := PointToAngle(e.Pos, result[0].Pos)
 		dir := ""
-		total := 4
+		total := 8
 		for total >= 0 && dir == "" {
-			DebugMsg(">>", total, dir)
 			dir = AngleToDir(degree)
 			tentacle := *e
 			tentacle.OrganDir = dir
 			attackPosition := tentacle.TentacleAttackPosition()
 			total -= 1
 			if !s.InMatrix(attackPosition) {
-				degree += 90
+				degree += 45
 				dir = ""
 				continue
 			}
-			if attackEntity := s.getByPos(attackPosition); attackEntity != nil && attackEntity.IsWall() {
-				degree += 90
+			if attackEntity := s.getByPos(attackPosition); attackEntity != nil && (attackEntity.IsWall() || attackEntity.IsMy()) {
+				degree += 45
 				dir = ""
 				continue
 			}
@@ -2114,6 +2667,27 @@ func (s *State) first() *Entity {
 	result := s.nextEntity[0]
 	s.nextEntity = append(s.nextEntity[:0], s.nextEntity[1:]...)
 	return result
+}
+
+func (s *State) filterZeroDistance() []*Entity {
+
+	zero := make([]*Entity, 0)
+	if len(s.freePos) == 0 {
+		return zero
+	}
+	filtered := make([]*Entity, 0)
+	for _, e := range s.freePos {
+		if e == nil {
+			continue
+		}
+		if e.NextDistance <= 0.0 {
+			zero = append(zero, e)
+			continue
+		}
+		filtered = append(filtered, e)
+	}
+	s.freePos = append(s.freePos[:0], filtered...)
+	return zero
 }
 
 func (s *State) FreeEntites(e *Entity) bool {
@@ -2174,7 +2748,7 @@ func (s *State) FreeOppEntites(e *Entity) bool {
 	dirs := e.Pos.GetRoseLocality()
 	full := []struct{}{}
 	for _, pos := range dirs {
-		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+		if !s.InMatrix(pos) {
 			continue
 		}
 		e := s.getByPos(pos)
@@ -2187,6 +2761,69 @@ func (s *State) FreeOppEntites(e *Entity) bool {
 		}
 	}
 	return len(full) > 0
+}
+
+func (s *State) NearOppoent(e *Entity) bool {
+	if e == nil {
+		return false
+	}
+
+	dirs := e.Pos.GetRoseLocality()
+	full := []struct{}{}
+	for _, pos := range dirs {
+		if pos.X < 0 || pos.Y < 0 || pos.Y >= s.w || pos.X >= s.h {
+			continue
+		}
+		e := s.getByPos(pos)
+		if e != nil {
+			if e.IsOpponent() && e.IsTentacle() {
+				attackPos := e.TentacleAttackPosition()
+				if e.Pos.Equal(attackPos) {
+					full = append(full, struct{}{})
+				}
+			}
+		}
+	}
+	return len(full) > 0
+}
+
+func (s *State) GetRootWithFreePos() []*Entity {
+	result := make([]*Entity, 0)
+	for _, entities := range s.myEntitiesByRoot {
+		if len(entities) == 0 {
+			continue
+		}
+		i := 0
+		findRoot := false
+		hasFreeSpace := false
+		for !findRoot || !hasFreeSpace {
+			entity := entities[i]
+			if entity.IsRoot() {
+				findRoot = true
+			}
+			dirs := entity.Pos.GetRoseLocality()
+			for _, dir := range dirs {
+				if !s.InMatrix(dir) {
+					continue
+				}
+				e := s.getByPos(dir)
+				if e == nil {
+					hasFreeSpace = true
+				} else if e != nil && e.IsProtein() {
+					hasFreeSpace = true
+				}
+			}
+			i += 1
+			if i == len(entities) {
+				break
+			}
+		}
+		if findRoot && hasFreeSpace {
+			result = append(result, entities...)
+		}
+	}
+
+	return result
 }
 
 func (s *State) initMatrix() {
@@ -2309,27 +2946,27 @@ func (s *Stock) IncByType(protein string) int {
 }
 
 func (s *Stock) NeedCollectProtein(protein string) bool {
-	if protein == AProteinTypeEntity {
-		return s.APerStep == 0 && s.A == 0
-	}
 	if protein == BProteinTypeEntity {
-		return s.BPerStep == 0 && s.B == 0
+		return s.BPerStep == 0
 	}
 	if protein == CProteinTypeEntity {
-		return s.CPerStep == 0 && s.C == 0
+		return s.CPerStep == 0
 	}
 	if protein == DProteinTypeEntity {
-		return s.DPerStep == 0 && s.D == 0
+		return s.DPerStep == 0
+	}
+	if protein == AProteinTypeEntity {
+		return s.APerStep == 0
 	}
 	return false
 }
 
 func (s *Stock) GetOrderByCountAsc() []string {
 	proteins := []SigleProtein{
-		{Type: AProteinTypeEntity, Count: s.A},
-		{Type: BProteinTypeEntity, Count: s.B},
-		{Type: CProteinTypeEntity, Count: s.C},
-		{Type: DProteinTypeEntity, Count: s.D},
+		{Type: AProteinTypeEntity, Count: s.A*s.APerStep + 1},
+		{Type: BProteinTypeEntity, Count: s.B * s.BPerStep},
+		{Type: CProteinTypeEntity, Count: s.C * s.CPerStep},
+		{Type: DProteinTypeEntity, Count: s.D * s.DPerStep},
 	}
 
 	sort.Slice(proteins, func(i, j int) bool {
@@ -2350,6 +2987,14 @@ func (s *Stock) CanAttack() bool {
 	return s.APerStep >= 2 && s.BPerStep >= 2 && s.CPerStep >= 2 && s.DPerStep >= 2
 }
 
+func (s *Stock) TryAttack() bool {
+	return s.APerStep >= 0 && s.BPerStep >= 1 && s.CPerStep >= 1 && s.DPerStep >= 0
+}
+
+func (s *Stock) CanDefend() bool {
+	return s.APerStep >= 0 && s.BPerStep >= 1 && s.CPerStep >= 1 && s.DPerStep >= 0
+}
+
 func (s *Stock) String() string {
 	return fmt.Sprintf("A:%d %.2f %d B:%d %.2f %d C:%d %.2f %d D:%d %.2f %d",
 		s.APerStep, s.PercentA, s.A,
@@ -2357,6 +3002,10 @@ func (s *Stock) String() string {
 		s.CPerStep, s.PercentC, s.C,
 		s.DPerStep, s.PercentD, s.D,
 	)
+}
+
+func (s *Stock) Score() int {
+	return s.A + s.B + s.C + s.D
 }
 
 func NewStock() *Stock {
@@ -2490,8 +3139,10 @@ func (s *State) walk(x, y int, fn func(e *Entity) bool) {
 			continue
 		}
 		for _, n := range k[y:] {
-			if !fn(n) {
-				break
+			if n != nil && n.IsMy() && s.FreeEntites(n) {
+				if !fn(n) {
+					break
+				}
 			}
 		}
 	}

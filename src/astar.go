@@ -2,9 +2,10 @@ package main
 
 import (
 	"container/heap"
+	"strings"
 )
 
-func (s *State) PathFind(start, dest *Entity) *Path {
+func (s *State) PathFind(start, dest *Entity, canAttack bool) *Path {
 
 	openNodes := minHeap{}
 	heap.Push(&openNodes, &Node{Entity: dest, Cost: dest.Cost})
@@ -26,8 +27,14 @@ func (s *State) PathFind(start, dest *Entity) *Path {
 		Entities: make([]*Entity, 0),
 	}
 
-	if !start.Walkable() || !dest.Walkable() {
-		return nil
+	if canAttack {
+		if !start.Walkable() || !dest.IsOpponent() {
+			return nil
+		}
+	} else {
+		if !start.Walkable() || !dest.Walkable() {
+			return nil
+		}
 	}
 
 	for {
@@ -38,7 +45,6 @@ func (s *State) PathFind(start, dest *Entity) *Path {
 		}
 
 		node := heap.Pop(&openNodes).(*Node)
-		// DebugMsg(">>", node.Entity.ToLog())
 
 		// If we've reached the start, then we've constructed our Path going from the destination to the start; we just have
 		// to loop through each Node and go up, adding it and its parents recursively to the path.
@@ -68,7 +74,7 @@ func (s *State) PathFind(start, dest *Entity) *Path {
 				}
 			}
 		}
-		if node.Entity.Pos.X < s.Width()-1 {
+		if node.Entity.Pos.X < s.Height()-1 {
 			if s.InMatrix(NewPos(node.Entity.Pos.X+1, node.Entity.Pos.Y)) {
 				c := s.get(node.Entity.Pos.X+1, node.Entity.Pos.Y)
 				n := &Node{c, node, c.Cost + node.Cost}
@@ -89,7 +95,7 @@ func (s *State) PathFind(start, dest *Entity) *Path {
 				}
 			}
 		}
-		if node.Entity.Pos.Y < s.Height()-1 {
+		if node.Entity.Pos.Y < s.Width()-1 {
 			if s.InMatrix(NewPos(node.Entity.Pos.X, node.Entity.Pos.Y+1)) {
 				c := s.get(node.Entity.Pos.X, node.Entity.Pos.Y+1)
 				n := &Node{c, node, c.Cost + node.Cost}
@@ -115,10 +121,7 @@ type Path struct {
 // TotalCost returns the total cost of the Path (i.e. is the sum of all of the Cells in the Path).
 func (p *Path) TotalCost() float64 {
 
-	cost := 1.0
-	if p == nil || p.Entities == nil {
-		return 1000
-	}
+	cost := 0.0
 	for _, cell := range p.Entities {
 		cost += cell.Cost
 	}
@@ -234,6 +237,15 @@ func (p *Path) SetIndex(index int) {
 		p.CurrentIndex = index
 	}
 
+}
+
+func (p *Path) Print() {
+
+	pos := []string{}
+	for _, e := range p.Entities {
+		pos = append(pos, e.ID())
+	}
+	DebugMsg("path:", strings.Join(pos, "->"))
 }
 
 // AtStart returns if the Path's current index is 0, the first Cell in the Path.

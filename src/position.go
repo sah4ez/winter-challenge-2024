@@ -20,6 +20,22 @@ func (p Position) Equal(pos Position) bool {
 	return p.X == pos.X && p.Y == pos.Y
 }
 
+func (p Position) Shift(dir string) Position {
+	if dir == DirS {
+		return p.Down()
+	}
+	if dir == DirE {
+		return p.Right()
+	}
+	if dir == DirW {
+		return p.Left()
+	}
+	if dir == DirN {
+		return p.Up()
+	}
+	return Position{}
+}
+
 func (p Position) Up() Position {
 	return Position{X: p.X, Y: p.Y - 1}
 }
@@ -34,6 +50,22 @@ func (p Position) Left() Position {
 
 func (p Position) Right() Position {
 	return Position{X: p.X + 1, Y: p.Y}
+}
+
+func (p Position) Up2() Position {
+	return Position{X: p.X, Y: p.Y - 2}
+}
+
+func (p Position) Down2() Position {
+	return Position{X: p.X, Y: p.Y + 2}
+}
+
+func (p Position) Left2() Position {
+	return Position{X: p.X - 2, Y: p.Y}
+}
+
+func (p Position) Right2() Position {
+	return Position{X: p.X + 2, Y: p.Y}
 }
 
 func (p Position) GetLocality() []Position {
@@ -55,6 +87,15 @@ func (p Position) GetRoseLocality() []Position {
 		p.Down(),
 		p.Left(),
 		p.Right(),
+	}
+}
+
+func (p Position) Get2RoseLocality() [][]Position {
+	return [][]Position{
+		[]Position{p.Up(), p.Up2()},
+		[]Position{p.Down(), p.Down2()},
+		[]Position{p.Left(), p.Left2()},
+		[]Position{p.Right(), p.Right2()},
 	}
 }
 
